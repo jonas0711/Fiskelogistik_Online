@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FSK Online Dashboard
 
-## Getting Started
+## Projektbeskrivelse
+En privat web-app bygget med Next.js 14, TypeScript, Tailwind CSS og ShadCN/UI. Kun ejeren kan logge ind.
 
-First, run the development server:
+## Teknologier
+- **Frontend**: Next.js 14 App Router med TypeScript
+- **Styling**: Tailwind CSS med ShadCN/UI komponenter
+- **Database**: Supabase (Free tier)
+- **Hosting**: Vercel (Hobby plan)
+- **Authentication**: Supabase Auth med whitelisted emails
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Mappestruktur
+
+```
+fsk-online/
+├── app/                    # Next.js App Router
+│   ├── api/               # API endpoints (Dit Maskinrum)
+│   │   ├── auth/          # Authentication endpoints
+│   │   │   └── login/     # Login route
+│   │   └── posts/         # Posts endpoints
+│   │       └── create/    # Create post route
+│   ├── globals.css        # Global styles
+│   ├── layout.tsx         # Root layout
+│   └── page.tsx           # Homepage
+├── components/            # Genanvendelige UI-komponenter (Din Lego-kasse)
+├── libs/                  # Hjælpefunktioner og services (Din Værktøjskasse)
+├── models/                # Database modeller (Dine Data-Blåtryk)
+├── public/                # Statiske filer
+└── src/                   # Source files
+    └── lib/               # Utility functions
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Installation og Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Lokal udvikling
+```bash
+# Installer dependencies
+npm install
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Start udviklingsserver
+npm run dev
 
-## Learn More
+# Åbn http://localhost:3000 i din browser
+```
 
-To learn more about Next.js, take a look at the following resources:
+### Miljøvariabler
+Opret en `.env.local` fil i roden med følgende variabler:
+```env
+NEXT_PUBLIC_SUPABASE_URL=din_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=din_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=din_service_role_key
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
+- `npm run dev` - Start udviklingsserver
+- `npm run build` - Build til production
+- `npm run start` - Start production server
+- `npm run lint` - Kør ESLint
+- `npm run type-check` - TypeScript type checking
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Sikkerhed
+- Authentication kun via whitelisted emails
+- Row Level Security (RLS) aktivt på alle tabeller
+- Alle API keys gemt i miljøvariabler
+- Ingen hard-delete, bruger `deleted_at` timestamp
 
-## Deploy on Vercel
+## Database Regler
+- Snake_case navngivning
+- Standard felter: `id`, `owner`, `created_at`
+- Soft delete med `deleted_at` nullable timestamp
+- Alle tabeller har RLS policies
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Git Workflow
+- `main` branch er beskyttet
+- Brug `feature/` branches for nye features
+- Pull Request → Review → Squash merge
+- Commit format: `feat:`, `fix:`, `chore:`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Konti og Adgang
+- **GitHub**: Privat repo `jonas-dashboard`
+- **Vercel**: Brug Vercel organisation
+- **Supabase**: Projekt i Supabase org
+
+## Test og Kvalitet
+- ESLint: Ingen warnings
+- Vitest + React Testing Library: 80% coverage
+- Playwright E2E tests
+- Lighthouse CI: ≥90 accessibility score
