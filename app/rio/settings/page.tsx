@@ -30,6 +30,7 @@ export default function RIOSettingsPage() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [minDistanceFilter, setMinDistanceFilter] = useState(100); // Minimum kørestrækning filter
   
   // State til admin status
   const [isUserAdmin, setIsUserAdmin] = useState(false);
@@ -68,10 +69,12 @@ export default function RIOSettingsPage() {
         const savedDarkMode = localStorage.getItem('rio-dark-mode') === 'true';
         const savedNotifications = localStorage.getItem('rio-notifications') !== 'false';
         const savedAutoRefresh = localStorage.getItem('rio-auto-refresh') !== 'false';
+        const savedMinDistance = localStorage.getItem('rio-min-distance');
         
         setIsDarkMode(savedDarkMode);
         setNotificationsEnabled(savedNotifications);
         setAutoRefresh(savedAutoRefresh);
+        setMinDistanceFilter(savedMinDistance ? parseInt(savedMinDistance) : 100);
         
       } catch (error) {
         console.error('❌ Fejl under session tjek for indstillinger:', error);
@@ -125,6 +128,17 @@ export default function RIOSettingsPage() {
     localStorage.setItem('rio-auto-refresh', newAutoRefresh.toString());
     
     toast.success(`Auto refresh ${newAutoRefresh ? 'aktiveret' : 'deaktiveret'}`);
+  };
+  
+  /**
+   * Håndterer minimum kørestrækning ændring
+   */
+  const handleMinDistanceChange = (value: number) => {
+    console.log('📏 Ændrer minimum kørestrækning til:', value);
+    setMinDistanceFilter(value);
+    localStorage.setItem('rio-min-distance', value.toString());
+    
+    toast.success(`Minimum kørestrækning sat til ${value} km`);
   };
   
   /**
@@ -367,6 +381,28 @@ export default function RIOSettingsPage() {
               >
                 {autoRefresh ? '🔄 Aktiveret' : '⏸️ Deaktiveret'}
               </Button>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Minimum Kørestrækning (km)
+                </Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Filtrer chauffører med mindst denne kørestrækning i KPI
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Input
+                  type="number"
+                  value={minDistanceFilter}
+                  onChange={(e) => handleMinDistanceChange(parseInt(e.target.value) || 100)}
+                  className="w-20 text-center"
+                  min="0"
+                  step="10"
+                />
+                <span className="text-sm text-gray-600 dark:text-gray-400">km</span>
+              </div>
             </div>
           </CardContent>
         </Card>
