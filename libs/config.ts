@@ -21,6 +21,8 @@ export const appConfig = {
   name: 'FSK Online Dashboard',
   // App beskrivelse
   description: 'Privat dashboard kun for ejeren',
+  // Invitation redirect URL
+  inviteRedirectUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/accept-invite`,
 };
 
 // Sikkerhedskonfiguration

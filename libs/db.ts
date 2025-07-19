@@ -3,53 +3,78 @@
  * Denne fil håndterer al kommunikation med databasen
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { supabaseConfig } from './config';
 
-console.log('🔌 Initialiserer Supabase klient...');
+// Singleton pattern for at undgå multiple instances
+let supabaseInstance: SupabaseClient | null = null;
+let supabaseAdminInstance: SupabaseClient | null = null;
 
 // Tjek om miljøvariabler er sat
 if (!supabaseConfig.url || !supabaseConfig.anonKey) {
   console.warn('⚠️ Supabase miljøvariabler ikke sat - klient vil ikke fungere korrekt');
 }
 
-// Opret Supabase klient til client-side operationer
-// Dette er den anonyme klient som bruges i browseren
-export const supabase = createClient(
-  supabaseConfig.url || 'https://placeholder.supabase.co',
-  supabaseConfig.anonKey || 'placeholder-key',
-  {
-    auth: {
-      // Automatisk opdatering af session
-      autoRefreshToken: true,
-      // Gem session i localStorage
-      persistSession: true,
-      // Detekter session ændringer
-      detectSessionInUrl: true,
-    },
-    // Debug mode i udvikling
-    db: {
-      schema: 'public',
-    },
+/**
+ * Opret eller hent eksisterende Supabase klient
+ * Singleton pattern for at undgå multiple GoTrueClient instances
+ */
+function getSupabaseClient() {
+  if (!supabaseInstance) {
+    console.log('🔌 Initialiserer Supabase klient...');
+    
+    supabaseInstance = createClient(
+      supabaseConfig.url || 'https://placeholder.supabase.co',
+      supabaseConfig.anonKey || 'placeholder-key',
+      {
+        auth: {
+          // Automatisk opdatering af session
+          autoRefreshToken: true,
+          // Gem session i localStorage
+          persistSession: true,
+          // Detekter session ændringer
+          detectSessionInUrl: true,
+        },
+        // Debug mode i udvikling
+        db: {
+          schema: 'public',
+        },
+      }
+    );
+    
+    console.log('✅ Supabase klient initialiseret');
   }
-);
+  
+  return supabaseInstance;
+}
 
-console.log('✅ Supabase klient initialiseret');
-
-// Opret server-side klient med service role
-// Dette bruges kun på serveren og har fuld adgang
-export const supabaseAdmin = createClient(
-  supabaseConfig.url || 'https://placeholder.supabase.co',
-  supabaseConfig.serviceRoleKey || 'placeholder-service-key',
-  {
-    auth: {
-      // Ingen session persistence på serveren
-      persistSession: false,
-    },
+/**
+ * Opret eller hent eksisterende Supabase admin klient
+ * Singleton pattern for at undgå multiple instances
+ */
+function getSupabaseAdminClient() {
+  if (!supabaseAdminInstance) {
+    const serviceKey = supabaseConfig.serviceRoleKey || 'placeholder-service-key';
+    supabaseAdminInstance = createClient(
+      supabaseConfig.url || 'https://placeholder.supabase.co',
+      serviceKey,
+      {
+        auth: {
+          // Ingen session persistence på serveren
+          persistSession: false as const,
+        },
+      }
+    );
+    
+    console.log('✅ Supabase admin klient initialiseret');
   }
-);
+  
+  return supabaseAdminInstance;
+}
 
-console.log('✅ Supabase admin klient initialiseret');
+// Eksporter klienter
+export const supabase = getSupabaseClient();
+export const supabaseAdmin = getSupabaseAdminClient();
 
 // Hjælpefunktioner til database operationer
 
