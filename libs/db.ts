@@ -5,6 +5,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { supabaseConfig } from './config';
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Singleton pattern for at undgå multiple instances
 let supabaseInstance: SupabaseClient | null = null;
@@ -21,7 +22,7 @@ if (!supabaseConfig.url || !supabaseConfig.anonKey) {
  */
 function getSupabaseClient() {
   if (!supabaseInstance) {
-    console.log('🔌 Initialiserer Supabase klient...');
+    console.log(`${LOG_PREFIXES.connection} Initialiserer Supabase klient...`);
     
     supabaseInstance = createClient(
       supabaseConfig.url || 'https://placeholder.supabase.co',
@@ -42,7 +43,7 @@ function getSupabaseClient() {
       }
     );
     
-    console.log('✅ Supabase klient initialiseret');
+    console.log(`${LOG_PREFIXES.success} Supabase klient initialiseret`);
   }
   
   return supabaseInstance;
@@ -66,7 +67,7 @@ function getSupabaseAdminClient() {
       }
     );
     
-    console.log('✅ Supabase admin klient initialiseret');
+    console.log(`${LOG_PREFIXES.success} Supabase admin klient initialiseret`);
   }
   
   return supabaseAdminInstance;
@@ -83,25 +84,25 @@ export const supabaseAdmin = getSupabaseAdminClient();
  * @returns Bruger objekt eller null hvis ikke logget ind
  */
 export async function getCurrentUser() {
-  console.log('👤 Henter nuværende bruger...');
+  console.log(`${LOG_PREFIXES.user} Henter nuværende bruger...`);
   
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error) {
-      console.error('❌ Fejl ved hentning af bruger:', error.message);
+      console.error(`${LOG_PREFIXES.error} Fejl ved hentning af bruger:`, error.message);
       return null;
     }
     
     if (user) {
-      console.log('✅ Bruger fundet:', user.email);
+      console.log(`${LOG_PREFIXES.success} Bruger fundet:`, user.email);
       return user;
     } else {
-      console.log('ℹ️ Ingen bruger logget ind');
+      console.log(`${LOG_PREFIXES.info} Ingen bruger logget ind`);
       return null;
     }
   } catch (error) {
-    console.error('❌ Uventet fejl ved hentning af bruger:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl ved hentning af bruger:`, error);
     return null;
   }
 }
@@ -111,12 +112,12 @@ export async function getCurrentUser() {
  * @returns true hvis bruger er logget ind, false ellers
  */
 export async function isAuthenticated() {
-  console.log('🔐 Tjekker authentication status...');
+  console.log(`${LOG_PREFIXES.auth} Tjekker authentication status...`);
   
   const user = await getCurrentUser();
   const isAuth = user !== null;
   
-  console.log(`✅ Authentication status: ${isAuth ? 'Logget ind' : 'Ikke logget ind'}`);
+  console.log(`${LOG_PREFIXES.success} Authentication status: ${isAuth ? 'Logget ind' : 'Ikke logget ind'}`);
   return isAuth;
 }
 
@@ -125,20 +126,20 @@ export async function isAuthenticated() {
  * @returns true hvis logout lykkedes, false ellers
  */
 export async function signOut() {
-  console.log('🚪 Logger bruger ud...');
+  console.log(`${LOG_PREFIXES.auth} Logger bruger ud...`);
   
   try {
     const { error } = await supabase.auth.signOut();
     
     if (error) {
-      console.error('❌ Fejl ved logout:', error.message);
+      console.error(`${LOG_PREFIXES.error} Fejl ved logout:`, error.message);
       return false;
     }
     
-    console.log('✅ Bruger logget ud succesfuldt');
+    console.log(`${LOG_PREFIXES.success} Bruger logget ud succesfuldt`);
     return true;
   } catch (error) {
-    console.error('❌ Uventet fejl ved logout:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl ved logout:`, error);
     return false;
   }
 }
@@ -148,25 +149,25 @@ export async function signOut() {
  * @returns Session objekt eller null
  */
 export async function getSession() {
-  console.log('📋 Henter session...');
+  console.log(`${LOG_PREFIXES.list} Henter session...`);
   
   try {
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (error) {
-      console.error('❌ Fejl ved hentning af session:', error.message);
+      console.error(`${LOG_PREFIXES.error} Fejl ved hentning af session:`, error.message);
       return null;
     }
     
     if (session) {
-      console.log('✅ Session fundet');
+      console.log(`${LOG_PREFIXES.success} Session fundet`);
       return session;
     } else {
-      console.log('ℹ️ Ingen aktiv session');
+      console.log(`${LOG_PREFIXES.info} Ingen aktiv session`);
       return null;
     }
   } catch (error) {
-    console.error('❌ Uventet fejl ved hentning af session:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl ved hentning af session:`, error);
     return null;
   }
 }

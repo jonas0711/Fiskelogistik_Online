@@ -8,6 +8,7 @@
 
 import { usePathname } from 'next/navigation'; // Next.js navigation hook
 import { Button } from '@/components/ui/button'; // ShadCN button komponent
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Professionelle ikoner fra Lucide React
 import { 
@@ -29,7 +30,7 @@ interface BreadcrumbItem {
 }
 
 export default function BreadcrumbNavigation() {
-  console.log('🍞 Initialiserer Breadcrumb Navigation...');
+  console.log(`${LOG_PREFIXES.render} Initialiserer Breadcrumb Navigation...`);
   
   const pathname = usePathname(); // Nuværende sti
   
@@ -37,7 +38,7 @@ export default function BreadcrumbNavigation() {
    * Genererer breadcrumb items baseret på nuværende sti
    */
   const generateBreadcrumbs = (): BreadcrumbItem[] => {
-    console.log('📍 Genererer breadcrumbs for sti:', pathname);
+    console.log(`${LOG_PREFIXES.render} Genererer breadcrumbs for sti:`, pathname);
     
     const breadcrumbs: BreadcrumbItem[] = [];
     
@@ -101,7 +102,7 @@ export default function BreadcrumbNavigation() {
       });
     }
     
-    console.log('🍞 Breadcrumbs genereret:', breadcrumbs);
+    console.log(`${LOG_PREFIXES.render} Breadcrumbs genereret:`, breadcrumbs);
     return breadcrumbs;
   };
   
@@ -112,7 +113,7 @@ export default function BreadcrumbNavigation() {
     return null;
   }
   
-  console.log('🎨 Renderer Breadcrumb Navigation...');
+  console.log(`${LOG_PREFIXES.render} Renderer Breadcrumb Navigation...`);
   
   return (
     <nav className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -124,7 +125,7 @@ export default function BreadcrumbNavigation() {
             size="sm"
             className="h-auto p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
             onClick={() => {
-              console.log('🍞 Navigerer til breadcrumb:', item.path);
+              console.log(`${LOG_PREFIXES.render} Navigerer til breadcrumb:`, item.path);
               window.location.href = item.path;
             }}
           >

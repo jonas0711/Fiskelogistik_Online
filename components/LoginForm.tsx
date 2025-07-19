@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { supabase } from '../libs/db'; // Vores Supabase klient
 import { isValidEmail } from '../libs/utils'; // Hjælpefunktion til email validering
 import Image from 'next/image'; // Next.js Image komponent til optimeret billede visning
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config'; // Log prefixes
 
 // Interface for form data
 interface LoginFormData {
@@ -30,7 +31,7 @@ interface LoginFormErrors {
 }
 
 export default function LoginForm() {
-  console.log('🔐 Initialiserer LoginForm komponent...');
+  console.log(`${LOG_PREFIXES.auth} Initialiserer LoginForm komponent...`);
   
   // State til form data
   const [formData, setFormData] = useState<LoginFormData>({
@@ -52,7 +53,7 @@ export default function LoginForm() {
    * @param value - Den nye værdi
    */
   const handleInputChange = (field: keyof LoginFormData, value: string) => {
-    console.log(`📝 Input ændring i ${field}:`, value);
+    console.log(`${LOG_PREFIXES.form} Input ændring i ${field}:`, value);
     
     // Opdater form data
     setFormData(prev => ({
@@ -82,7 +83,7 @@ export default function LoginForm() {
    * @returns true hvis data er gyldigt, false ellers
    */
   const validateForm = (): boolean => {
-    console.log('🔍 Validerer login form...');
+    console.log(`${LOG_PREFIXES.search} Validerer login form...`);
     
     const newErrors: LoginFormErrors = {};
     
@@ -104,7 +105,7 @@ export default function LoginForm() {
     setErrors(newErrors);
     
     const isValid = Object.keys(newErrors).length === 0;
-    console.log(`✅ Form validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`, newErrors);
+    console.log(`${LOG_PREFIXES.success} Form validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`, newErrors);
     
     return isValid;
   };
@@ -116,11 +117,11 @@ export default function LoginForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault(); // Forhindrer standard form submission
     
-    console.log('🚀 Starter login process...');
+    console.log(`${LOG_PREFIXES.auth} Starter login process...`);
     
     // Valider form først
     if (!validateForm()) {
-      console.log('❌ Form validering fejlede, stopper login');
+      console.log(`${LOG_PREFIXES.error} Form validering fejlede, stopper login`);
       return;
     }
     
@@ -129,7 +130,7 @@ export default function LoginForm() {
     setErrors({});
     
     try {
-      console.log('🔐 Forsøger at logge ind med Supabase...');
+      console.log(`${LOG_PREFIXES.auth} Forsøger at logge ind med Supabase...`);
       
       // Kald Supabase signInWithPassword
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -138,7 +139,7 @@ export default function LoginForm() {
       });
       
       if (error) {
-        console.error('❌ Login fejl:', error.message);
+        console.error(`${LOG_PREFIXES.error} Login fejl:`, error.message);
         
         // Håndter forskellige fejl typer
         if (error.message.includes('Invalid login credentials')) {
@@ -149,7 +150,7 @@ export default function LoginForm() {
           setErrors({ general: 'Der opstod en fejl under login. Prøv venligst igen.' });
         }
       } else {
-        console.log('✅ Login succesfuldt:', data.user?.email);
+        console.log(`${LOG_PREFIXES.success} Login succesfuldt:`, data.user?.email);
         
         // Ryd form data
         setFormData({ email: '', password: '' });
@@ -158,7 +159,7 @@ export default function LoginForm() {
         window.location.href = '/rio';
       }
     } catch (error) {
-      console.error('❌ Uventet fejl under login:', error);
+      console.error(`${LOG_PREFIXES.error} Uventet fejl under login:`, error);
       setErrors({ general: 'Der opstod en uventet fejl. Prøv venligst igen.' });
     } finally {
       // Stop loading
@@ -166,7 +167,7 @@ export default function LoginForm() {
     }
   };
   
-  console.log('🎨 Renderer LoginForm komponent...');
+  console.log(`${LOG_PREFIXES.render} Renderer LoginForm komponent...`);
   
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4">
@@ -225,7 +226,7 @@ export default function LoginForm() {
               />
               {errors.email && (
                 <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
-                  <span className="mr-1">⚠️</span>
+                  <span className="mr-1">⚠</span>
                   {errors.email}
                 </p>
               )}
@@ -251,7 +252,7 @@ export default function LoginForm() {
               />
               {errors.password && (
                 <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
-                  <span className="mr-1">⚠️</span>
+                  <span className="mr-1">⚠</span>
                   {errors.password}
                 </p>
               )}
@@ -261,7 +262,7 @@ export default function LoginForm() {
             {errors.general && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg dark:bg-red-900/20 dark:border-red-800">
                 <p className="text-sm text-red-700 dark:text-red-300 flex items-center">
-                  <span className="mr-2">🚫</span>
+                  <span className="mr-2">✕</span>
                   {errors.general}
                 </p>
               </div>
@@ -290,7 +291,7 @@ export default function LoginForm() {
           <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
             <div className="text-center space-y-2">
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                🔒 Sikker adgang - Kun autoriserede brugere
+                Sikker adgang - Kun autoriserede brugere
               </p>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Kun whitelisted email adresser har adgang til systemet

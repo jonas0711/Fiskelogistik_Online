@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'; // ShadCN button komponent
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // ShadCN card komponenter
 import { Input } from '@/components/ui/input'; // ShadCN input komponent
 import { Label } from '@/components/ui/label'; // ShadCN label komponent
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for upload status
 interface UploadStatus {
@@ -27,7 +28,7 @@ interface DateSelection {
 }
 
 export default function DataUploadForm() {
-  console.log('📤 Initialiserer Data Upload Form...');
+  console.log(`${LOG_PREFIXES.render} Initialiserer Data Upload Form...`);
   
   // State til fil valg
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -84,7 +85,7 @@ export default function DataUploadForm() {
         return;
       }
       
-      console.log('✅ Fil valideret:', file.name, file.size);
+      console.log(`${LOG_PREFIXES.success} Fil valideret:`, file.name, file.size);
       setSelectedFile(file);
       setUploadStatus({
         isUploading: false,
@@ -142,7 +143,7 @@ export default function DataUploadForm() {
       formData.append('month', dateSelection.month.toString());
       formData.append('year', dateSelection.year.toString());
       
-      console.log('📊 Upload data:', {
+      console.log(`${LOG_PREFIXES.stats} Upload data:`, {
         filename: selectedFile.name,
         month: dateSelection.month,
         year: dateSelection.year,
@@ -178,7 +179,7 @@ export default function DataUploadForm() {
       
       const result = await response.json();
       
-      console.log('✅ Upload succesfuldt:', result);
+      console.log(`${LOG_PREFIXES.success} Upload succesfuldt:`, result);
       
       setUploadStatus({
         isUploading: false,
@@ -226,7 +227,7 @@ export default function DataUploadForm() {
     }
   };
   
-  console.log('🎨 Renderer Data Upload Form...');
+  console.log(`${LOG_PREFIXES.render} Renderer Data Upload Form...`);
   
   return (
     <div className="max-w-4xl mx-auto space-y-6">

@@ -8,10 +8,11 @@
 
 import { useState, useEffect } from 'react'; // React hooks til state og side-effekter
 import { useRouter } from 'next/navigation'; // Next.js navigation hook
-import Image from 'next/image'; // Next.js Image komponent for optimeret billedvisning
 import { Button } from '@/components/ui/button'; // ShadCN button komponent
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // ShadCN card komponenter
 import { Label } from '@/components/ui/label'; // ShadCN label komponent
+import CommonHeader from '@/components/CommonHeader'; // Fælles header komponent
+import BreadcrumbNavigation from '@/components/BreadcrumbNavigation'; // Breadcrumb navigation
 import { supabase } from '../../../libs/db'; // Vores Supabase klient
 import { isAdmin } from '../../../libs/admin'; // Admin funktioner
 import { toast } from 'sonner'; // Toast notifikationer
@@ -246,50 +247,18 @@ export default function RIOReportsPage() {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 dark:bg-gray-800/95 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            {/* Logo og branding */}
-            <div className="flex items-center space-x-3">
-              <div className="relative w-10 h-10">
-                <Image
-                  src="/fiskelogistikgruppen-logo.png"
-                  alt="FSK Logo"
-                  fill
-                  className="object-contain"
-                  priority
-                />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                  FSK Online
-                </h1>
-                <p className="text-sm text-blue-600 dark:text-blue-400">
-                  RIO Program - Rapporter
-                </p>
-              </div>
-            </div>
-            
-            {/* Navigation til admin (kun for admins) */}
-            <div className="flex items-center space-x-4">
-              {isUserAdmin && (
-                <Button
-                  onClick={() => router.push('/admin')}
-                  variant="outline"
-                  size="sm"
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  🔧 Admin Panel
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Fælles header med navigation */}
+      <CommonHeader 
+        title="FSK Online"
+        subtitle="RIO Program - Rapporter"
+        isAdmin={isUserAdmin}
+      />
       
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Breadcrumb navigation */}
+        <BreadcrumbNavigation />
+        
         {/* Page title */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">

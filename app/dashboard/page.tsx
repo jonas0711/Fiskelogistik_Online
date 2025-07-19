@@ -14,6 +14,7 @@ import InviteUserForm from '@/components/InviteUserForm'; // Vores invitation fo
 import CommonHeader from '@/components/CommonHeader'; // Fælles header komponent
 import { supabase } from '../../libs/db'; // Vores Supabase klient
 import { isAdmin } from '../../libs/admin'; // Admin funktioner
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for bruger data
 interface UserData {
@@ -28,7 +29,7 @@ interface UserData {
 }
 
 export default function DashboardPage() {
-  console.log('🏠 Initialiserer Dashboard Page...');
+  console.log(`${LOG_PREFIXES.home} Initialiserer Dashboard Page...`);
   
   const router = useRouter(); // Next.js router til navigation
   
@@ -48,7 +49,7 @@ export default function DashboardPage() {
    * Henter bruger data
    */
   useEffect(() => {
-    console.log('🔍 Henter bruger data...');
+    console.log(`${LOG_PREFIXES.search} Henter bruger data...`);
     
     const getUser = async () => {
       try {
@@ -56,12 +57,12 @@ export default function DashboardPage() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError || !session) {
-          console.error('❌ Ingen gyldig session:', sessionError?.message);
+          console.error(`${LOG_PREFIXES.error} Ingen gyldig session:`, sessionError?.message);
           router.push('/');
           return;
         }
         
-        console.log('✅ Session fundet for:', session.user?.email);
+        console.log(`${LOG_PREFIXES.success} Session fundet for:`, session.user?.email);
         
         // Sæt bruger data
         setUser({
@@ -77,7 +78,7 @@ export default function DashboardPage() {
         setIsUserAdmin(adminStatus);
         
       } catch (error) {
-        console.error('❌ Fejl under hentning af bruger data:', error);
+        console.error(`${LOG_PREFIXES.error} Fejl under hentning af bruger data:`, error);
         router.push('/');
       } finally {
         setIsLoading(false);
@@ -87,7 +88,7 @@ export default function DashboardPage() {
     getUser();
   }, [router]);
   
-  console.log('🎨 Renderer Dashboard Page...');
+  console.log(`${LOG_PREFIXES.render} Renderer Dashboard Page...`);
   
   // Fjernet automatisk redirect - lad brugeren navigere manuelt
   // useEffect(() => {

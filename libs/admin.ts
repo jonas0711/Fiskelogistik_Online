@@ -5,6 +5,7 @@
 
 import { supabaseAdmin } from './db';
 import { getCurrentUser } from './db';
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for admin bruger
 export interface AdminUser {
@@ -22,34 +23,34 @@ export interface AdminUser {
  * @returns Promise<boolean> - true hvis bruger er admin
  */
 export async function isAdmin(): Promise<boolean> {
-  console.log('👑 Tjekker admin status...');
+  console.log(`${LOG_PREFIXES.admin} Tjekker admin status...`);
   
   try {
     // Hent nuværende bruger
     const user = await getCurrentUser();
     
     if (!user) {
-      console.log('❌ Ingen bruger logget ind');
+      console.log(`${LOG_PREFIXES.error} Ingen bruger logget ind`);
       return false;
     }
     
-    console.log('👤 Bruger fundet:', user.email);
+    console.log(`${LOG_PREFIXES.user} Bruger fundet:`, user.email);
     
     // Tjek om bruger har admin rolle i app metadata (sikker)
     const userRoles = user.app_metadata?.roles || [];
     const isAdminFlag = user.app_metadata?.is_admin;
     
-    console.log('🔍 Bruger roller:', userRoles);
-    console.log('🔍 Admin flag:', isAdminFlag);
+    console.log(`${LOG_PREFIXES.search} Bruger roller:`, userRoles);
+    console.log(`${LOG_PREFIXES.search} Admin flag:`, isAdminFlag);
     
     // Returner true hvis bruger er admin
     const isAdminUser = userRoles.includes('admin') || isAdminFlag === true;
     
-    console.log(`✅ Admin status: ${isAdminUser ? 'Admin' : 'Ikke admin'}`);
+    console.log(`${LOG_PREFIXES.success} Admin status: ${isAdminUser ? 'Admin' : 'Ikke admin'}`);
     return isAdminUser;
     
   } catch (error) {
-    console.error('❌ Fejl ved admin tjek:', error);
+    console.error(`${LOG_PREFIXES.error} Fejl ved admin tjek:`, error);
     return false;
   }
 }
@@ -60,19 +61,19 @@ export async function isAdmin(): Promise<boolean> {
  * @returns Promise<AdminUser | null>
  */
 export async function getAdminUser(userId: string): Promise<AdminUser | null> {
-  console.log('🔍 Henter admin bruger data for:', userId);
+  console.log(`${LOG_PREFIXES.search} Henter admin bruger data for:`, userId);
   
   try {
     // Hent bruger fra Supabase Auth
     const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(userId);
     
     if (error) {
-      console.error('❌ Fejl ved hentning af bruger:', error.message);
+      console.error(`${LOG_PREFIXES.error} Fejl ved hentning af bruger:`, error.message);
       return null;
     }
     
     if (!user) {
-      console.log('❌ Bruger ikke fundet');
+      console.log(`${LOG_PREFIXES.error} Bruger ikke fundet`);
       return null;
     }
     
@@ -81,7 +82,7 @@ export async function getAdminUser(userId: string): Promise<AdminUser | null> {
     const isAdminFlag = user.app_metadata?.is_admin;
     
     if (userRoles.includes('admin') || isAdminFlag === true) {
-      console.log('✅ Admin bruger fundet:', user.email);
+      console.log(`${LOG_PREFIXES.success} Admin bruger fundet:`, user.email);
       return {
         id: user.id,
         email: user.email || '',
@@ -89,12 +90,12 @@ export async function getAdminUser(userId: string): Promise<AdminUser | null> {
         user_metadata: user.user_metadata,
       };
     } else {
-      console.log('❌ Bruger er ikke admin');
+      console.log(`${LOG_PREFIXES.error} Bruger er ikke admin`);
       return null;
     }
     
   } catch (error) {
-    console.error('❌ Uventet fejl ved admin bruger hentning:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl ved admin bruger hentning:`, error);
     return null;
   }
 }
@@ -105,10 +106,10 @@ export async function getAdminUser(userId: string): Promise<AdminUser | null> {
  * @returns Promise<AdminUser | null>
  */
 export async function validateAdminToken(authHeader: string | null): Promise<AdminUser | null> {
-  console.log('🔐 Validerer admin token...');
+  console.log(`${LOG_PREFIXES.auth} Validerer admin token...`);
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('❌ Ingen eller ugyldig authorization header');
+    console.log(`${LOG_PREFIXES.error} Ingen eller ugyldig authorization header`);
     return null;
   }
   
@@ -119,12 +120,12 @@ export async function validateAdminToken(authHeader: string | null): Promise<Adm
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
     
     if (error) {
-      console.error('❌ Token validering fejlede:', error.message);
+      console.error(`${LOG_PREFIXES.error} Token validering fejlede:`, error.message);
       return null;
     }
     
     if (!user) {
-      console.log('❌ Ingen bruger fundet i token');
+      console.log(`${LOG_PREFIXES.error} Ingen bruger fundet i token`);
       return null;
     }
     
@@ -133,7 +134,7 @@ export async function validateAdminToken(authHeader: string | null): Promise<Adm
     const isAdminFlag = user.app_metadata?.is_admin;
     
     if (userRoles.includes('admin') || isAdminFlag === true) {
-      console.log('✅ Admin token valideret for:', user.email);
+      console.log(`${LOG_PREFIXES.success} Admin token valideret for:`, user.email);
       return {
         id: user.id,
         email: user.email || '',
@@ -141,12 +142,12 @@ export async function validateAdminToken(authHeader: string | null): Promise<Adm
         user_metadata: user.user_metadata,
       };
     } else {
-      console.log('❌ Token tilhører ikke en admin bruger');
+      console.log(`${LOG_PREFIXES.error} Token tilhører ikke en admin bruger`);
       return null;
     }
     
   } catch (error) {
-    console.error('❌ Uventet fejl ved token validering:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl ved token validering:`, error);
     return null;
   }
 }
@@ -157,7 +158,7 @@ export async function validateAdminToken(authHeader: string | null): Promise<Adm
  * @returns Promise<boolean> - true hvis opdatering lykkedes
  */
 export async function setUserAsAdmin(userId: string): Promise<boolean> {
-  console.log('👑 Sætter admin rolle på bruger:', userId);
+  console.log(`${LOG_PREFIXES.admin} Sætter admin rolle på bruger:`, userId);
   
   try {
     // Opdater bruger app metadata med admin rolle (sikker)
@@ -172,15 +173,15 @@ export async function setUserAsAdmin(userId: string): Promise<boolean> {
     );
     
     if (error) {
-      console.error('❌ Fejl ved admin rolle opdatering:', error.message);
+      console.error(`${LOG_PREFIXES.error} Fejl ved admin rolle opdatering:`, error.message);
       return false;
     }
     
-    console.log('✅ Admin rolle sat succesfuldt på:', data.user?.email);
+    console.log(`${LOG_PREFIXES.success} Admin rolle sat succesfuldt på:`, data.user?.email);
     return true;
     
   } catch (error) {
-    console.error('❌ Uventet fejl ved admin rolle opdatering:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl ved admin rolle opdatering:`, error);
     return false;
   }
 }

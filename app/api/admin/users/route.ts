@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../libs/db';
 import { validateAdminToken } from '../../../../libs/admin';
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for bruger data
 interface User {
@@ -34,7 +35,7 @@ interface ApiResponse {
  * @returns NextResponse med brugerliste
  */
 export async function GET(request: NextRequest) {
-  console.log('👥 Admin Users API kaldt...');
+  console.log(`${LOG_PREFIXES.users} Admin Users API kaldt...`);
   
   try {
     // Valider admin token fra request header
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    console.log('✅ Admin autorisation bekræftet for:', adminUser.email);
+    console.log(`${LOG_PREFIXES.success} Admin autorisation bekræftet for:`, adminUser.email);
     
     // Hent alle brugere via Supabase Admin API
     const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
       invited_at: user.invited_at,
     }));
     
-    console.log('✅ Brugerliste hentet:', formattedUsers.length, 'brugere');
+    console.log(`${LOG_PREFIXES.success} Brugerliste hentet:`, formattedUsers.length, 'brugere');
     
     // Returner succes response
     return NextResponse.json(

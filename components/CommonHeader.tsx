@@ -10,6 +10,8 @@ import { useRouter, usePathname } from 'next/navigation'; // Next.js navigation 
 import { Button } from '@/components/ui/button'; // ShadCN button komponent
 import { supabase } from '../libs/db'; // Vores Supabase klient
 import Image from 'next/image'; // Next.js Image komponent
+import { HomeIcon, AdminIcon } from '@/components/ui/icons'; // Professionelle ikoner
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config'; // Log prefixes
 
 // Interface for header props
 interface CommonHeaderProps {
@@ -29,7 +31,7 @@ export default function CommonHeader({
   isAdmin = false,
   showLogout = true
 }: CommonHeaderProps) {
-  console.log('🏷️ Initialiserer Common Header...');
+  console.log(`${LOG_PREFIXES.render} Initialiserer Common Header...`);
   
   const router = useRouter(); // Next.js router til navigation
   const pathname = usePathname(); // Nuværende sti
@@ -46,7 +48,7 @@ export default function CommonHeader({
    * Håndterer navigation til hovedsiden
    */
   const handleHome = () => {
-    console.log('🏠 Navigerer til hovedsiden...');
+    console.log(`${LOG_PREFIXES.home} Navigerer til hovedsiden...`);
     router.push('/rio');
   };
   
@@ -54,7 +56,7 @@ export default function CommonHeader({
    * Håndterer navigation til admin panel
    */
   const handleAdmin = () => {
-    console.log('🔧 Navigerer til admin panel...');
+    console.log(`${LOG_PREFIXES.admin} Navigerer til admin panel...`);
     router.push('/admin');
   };
   
@@ -62,19 +64,19 @@ export default function CommonHeader({
    * Håndterer logout
    */
   const handleLogout = async () => {
-    console.log('🚪 Starter logout process...');
+    console.log(`${LOG_PREFIXES.auth} Starter logout process...`);
     
     try {
       const { error } = await supabase.auth.signOut();
       
       if (error) {
-        console.error('❌ Logout fejl:', error.message);
+        console.error(`${LOG_PREFIXES.error} Logout fejl:`, error.message);
       } else {
-        console.log('✅ Logout succesfuldt');
+        console.log(`${LOG_PREFIXES.success} Logout succesfuldt`);
         router.push('/');
       }
     } catch (error) {
-      console.error('❌ Uventet fejl under logout:', error);
+      console.error(`${LOG_PREFIXES.error} Uventet fejl under logout:`, error);
     }
   };
   
@@ -88,7 +90,7 @@ export default function CommonHeader({
    */
   const isOnAdminPage = pathname === '/admin';
   
-  console.log('🎨 Renderer Common Header...');
+  console.log(`${LOG_PREFIXES.render} Renderer Common Header...`);
   
   return (
     <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 dark:bg-gray-800/95 dark:border-gray-700 sticky top-0 z-50">
@@ -138,9 +140,10 @@ export default function CommonHeader({
                 onClick={handleHome}
                 variant="ghost"
                 size="sm"
-                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white flex items-center gap-2"
               >
-                🏠 Hjem
+                <HomeIcon size="sm" />
+                Hjem
               </Button>
             )}
           </div>
@@ -153,9 +156,10 @@ export default function CommonHeader({
                 onClick={handleAdmin}
                 variant="outline"
                 size="sm"
-                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white flex items-center gap-2"
               >
-                🔧 Admin
+                <AdminIcon size="sm" />
+                Admin
               </Button>
             )}
             

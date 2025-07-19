@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react'; // React hooks til state og side-effekter
 import { Button } from '@/components/ui/button'; // ShadCN button komponent
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 export default function ScrollToTop() {
   console.log('⬆️ Initialiserer Scroll To Top...');
@@ -55,7 +56,7 @@ export default function ScrollToTop() {
     };
   }, []);
   
-  console.log('🎨 Renderer Scroll To Top, synlig:', isVisible);
+  console.log(`${LOG_PREFIXES.render} Renderer Scroll To Top, synlig:`, isVisible);
   
   // Vis kun hvis knappen skal være synlig
   if (!isVisible) {

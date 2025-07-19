@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../libs/db';
 import { validateAdminToken } from '../../../../libs/admin';
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for system statistikker
 interface SystemStats {
@@ -30,7 +31,7 @@ interface ApiResponse {
  * @returns NextResponse med system statistikker
  */
 export async function GET(request: NextRequest) {
-  console.log('📊 Admin Stats API kaldt...');
+  console.log(`${LOG_PREFIXES.stats} Admin Stats API kaldt...`);
   
   try {
     // Valider admin token fra request header
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     const adminUser = await validateAdminToken(authHeader);
     
     if (!adminUser) {
-      console.error('❌ Ingen admin autorisation');
+      console.error(`${LOG_PREFIXES.error} Ingen admin autorisation`);
       return NextResponse.json(
         {
           success: false,
@@ -49,13 +50,13 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    console.log('✅ Admin autorisation bekræftet for:', adminUser.email);
+    console.log(`${LOG_PREFIXES.success} Admin autorisation bekræftet for:`, adminUser.email);
     
     // Hent alle brugere via Supabase Admin API
     const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
     
     if (error) {
-      console.error('❌ Fejl ved hentning af brugere:', error.message);
+      console.error(`${LOG_PREFIXES.error} Fejl ved hentning af brugere:`, error.message);
       return NextResponse.json(
         {
           success: false,
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    console.log('📊 Brugere hentet:', users.length);
+    console.log(`${LOG_PREFIXES.stats} Brugere hentet:`, users.length);
 
     // Beregn statistikker
     const totalUsers = users.length;
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
       pendingUsers,
     };
     
-    console.log('✅ System statistikker hentet:', stats);
+    console.log(`${LOG_PREFIXES.success} System statistikker hentet:`, stats);
     
     // Returner succes response
     return NextResponse.json(
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
     );
     
   } catch (error) {
-    console.error('❌ Uventet fejl i admin stats API:', error);
+    console.error(`${LOG_PREFIXES.error} Uventet fejl i admin stats API:`, error);
     
     return NextResponse.json(
       {

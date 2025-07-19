@@ -3,6 +3,8 @@
  * Definerer strukturen for brugerdata i databasen
  */
 
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
+
 // TypeScript interface for brugerdata
 export interface User {
   // Unikt ID for brugeren (UUID)
@@ -118,7 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_user_active ON "user"(is_active) WHERE deleted_at
 
 // Hjælpefunktioner til validering
 export function validateUserData(data: CreateUserData): { isValid: boolean; errors: string[] } {
-  console.log('🔍 Validerer brugerdata:', data);
+  console.log(`${LOG_PREFIXES.search} Validerer brugerdata:`, data);
   
   const errors: string[] = [];
   
@@ -140,7 +142,7 @@ export function validateUserData(data: CreateUserData): { isValid: boolean; erro
   }
   
   const isValid = errors.length === 0;
-  console.log(`✅ Brugerdata validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`, errors);
+  console.log(`${LOG_PREFIXES.success} Brugerdata validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`, errors);
   
   return { isValid, errors };
 }

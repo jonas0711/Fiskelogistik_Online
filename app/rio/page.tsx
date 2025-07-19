@@ -11,11 +11,12 @@ import { useRouter } from 'next/navigation'; // Next.js navigation hook
 import RIONavigation from '@/components/RIONavigation'; // Vores RIO navigation komponent
 import { supabase } from '../../libs/db'; // Vores Supabase klient
 import { isAdmin } from '../../libs/admin'; // Admin funktioner
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 
 
 export default function RIOHomePage() {
-  console.log('🏠 Initialiserer RIO Home Page...');
+  console.log(`${LOG_PREFIXES.home} Initialiserer RIO Home Page...`);
   
   const router = useRouter(); // Next.js router til navigation
   
@@ -31,7 +32,7 @@ export default function RIOHomePage() {
    * Henter bruger data og tjekker admin status
    */
   useEffect(() => {
-    console.log('🔍 Henter bruger data for RIO...');
+    console.log(`${LOG_PREFIXES.search} Henter bruger data for RIO...`);
     
     const getUser = async () => {
       try {
@@ -39,22 +40,22 @@ export default function RIOHomePage() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError || !session) {
-          console.error('❌ Ingen gyldig session:', sessionError?.message);
+          console.error(`${LOG_PREFIXES.error} Ingen gyldig session:`, sessionError?.message);
           router.push('/');
           return;
         }
         
-        console.log('✅ Session fundet for RIO:', session.user?.email);
+        console.log(`${LOG_PREFIXES.success} Session fundet for RIO:`, session.user?.email);
         
 
         
         // Tjek om bruger er admin
         const adminStatus = await isAdmin();
         setIsUserAdmin(adminStatus);
-        console.log('👤 Admin status for RIO:', adminStatus);
+        console.log(`${LOG_PREFIXES.user} Admin status for RIO:`, adminStatus);
         
       } catch (error) {
-        console.error('❌ Fejl under hentning af bruger data for RIO:', error);
+        console.error(`${LOG_PREFIXES.error} Fejl under hentning af bruger data for RIO:`, error);
         router.push('/');
       } finally {
         setIsLoading(false);
@@ -64,7 +65,7 @@ export default function RIOHomePage() {
     getUser();
   }, [router]);
   
-  console.log('🎨 Renderer RIO Home Page...');
+  console.log(`${LOG_PREFIXES.render} Renderer RIO Home Page...`);
   
   // Vis loading state
   if (isLoading) {

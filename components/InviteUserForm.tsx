@@ -13,6 +13,7 @@ import { Label } from './ui/label';
 
 import { supabase } from '../libs/db';
 import { toast } from 'sonner';
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for invitation form data
 interface InviteFormData {
@@ -39,7 +40,7 @@ interface ApiResponse {
  * @returns JSX element
  */
 export default function InviteUserForm() {
-  console.log('🎨 Renderer InviteUserForm komponent...');
+  console.log(`${LOG_PREFIXES.render} Renderer InviteUserForm komponent...`);
   
   // State for form data
   const [formData, setFormData] = useState<InviteFormData>({
@@ -58,7 +59,7 @@ export default function InviteUserForm() {
    * @param value - Ny værdi
    */
   const handleInputChange = (field: keyof InviteFormData, value: string) => {
-    console.log(`📝 Form felt ændret: ${field} = ${value}`);
+    console.log(`${LOG_PREFIXES.form} Form felt ændret: ${field} = ${value}`);
     setFormData(prev => ({
       ...prev,
       [field]: value,
@@ -71,7 +72,7 @@ export default function InviteUserForm() {
    * @returns Validering resultat
    */
   const validateForm = (data: InviteFormData): { isValid: boolean; errors: string[] } => {
-    console.log('🔍 Validerer invitation form...');
+    console.log(`${LOG_PREFIXES.search} Validerer invitation form...`);
     
     const errors: string[] = [];
     
@@ -100,7 +101,7 @@ export default function InviteUserForm() {
     }
     
     const isValid = errors.length === 0;
-    console.log(`✅ Form validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`, errors);
+    console.log(`${LOG_PREFIXES.success} Form validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`, errors);
     
     return { isValid, errors };
   };
@@ -124,7 +125,7 @@ export default function InviteUserForm() {
     setIsLoading(true);
     
     try {
-      console.log('🔐 Henter session for admin token...');
+      console.log(`${LOG_PREFIXES.auth} Henter session for admin token...`);
       
       // Hent nuværende session for at få access token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -139,7 +140,7 @@ export default function InviteUserForm() {
         throw new Error('Du skal være logget ind for at sende invitationer');
       }
       
-      console.log('✅ Session hentet, sender invitation request...');
+      console.log(`${LOG_PREFIXES.success} Session hentet, sender invitation request...`);
       
       // Send invitation request til API
       const response = await fetch('/api/auth/invite', {
@@ -157,7 +158,7 @@ export default function InviteUserForm() {
       console.log('📨 API response data:', result);
       
       if (result.success) {
-        console.log('✅ Invitation sendt succesfuldt');
+        console.log(`${LOG_PREFIXES.success} Invitation sendt succesfuldt`);
         toast.success(`Invitation sendt til ${result.data?.email}`);
         
         // Reset form
@@ -190,7 +191,7 @@ export default function InviteUserForm() {
     }
   };
   
-  console.log('✅ InviteUserForm komponent renderet');
+  console.log(`${LOG_PREFIXES.success} InviteUserForm komponent renderet`);
   
   return (
     <div className="w-full">

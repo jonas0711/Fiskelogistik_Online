@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'; // ShadCN card kompone
 import CommonHeader from './CommonHeader'; // Fælles header komponent
 import BreadcrumbNavigation from './BreadcrumbNavigation'; // Breadcrumb navigation
 import ScrollToTop from './ScrollToTop'; // Scroll til toppen
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Professionelle ikoner fra Lucide React
 import { 
@@ -33,7 +34,7 @@ interface NavItem {
 }
 
 export default function RIONavigation({ isAdmin = false }: { isAdmin?: boolean }) {
-  console.log('🧭 Initialiserer RIO Navigation...');
+  console.log(`${LOG_PREFIXES.render} Initialiserer RIO Navigation...`);
   
   const router = useRouter(); // Next.js router til navigation
   const pathname = usePathname(); // Nuværende sti for at markere aktiv side
@@ -96,7 +97,7 @@ export default function RIONavigation({ isAdmin = false }: { isAdmin?: boolean }
    * Håndterer navigation til en side
    */
   const handleNavigation = (path: string) => {
-    console.log('🧭 Navigerer til:', path);
+    console.log(`${LOG_PREFIXES.render} Navigerer til:`, path);
     router.push(path);
   };
   
@@ -107,7 +108,7 @@ export default function RIONavigation({ isAdmin = false }: { isAdmin?: boolean }
     return pathname === path;
   };
   
-  console.log('🎨 Renderer RIO Navigation...');
+  console.log(`${LOG_PREFIXES.render} Renderer RIO Navigation...`);
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">

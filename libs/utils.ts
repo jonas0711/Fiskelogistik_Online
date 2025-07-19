@@ -5,6 +5,7 @@
 
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 /**
  * Kombinerer CSS klasser på en smart måde
@@ -22,13 +23,13 @@ export function cn(...inputs: ClassValue[]) {
  * @returns Formateret dato som string
  */
 export function formatDate(date: Date | string): string {
-  console.log('📅 Formaterer dato:', date);
+  console.log(`${LOG_PREFIXES.form} Formaterer dato:`, date);
   
   const dateObj = typeof date === 'string' ? new Date(date) : date;
   
   // Tjek om datoen er gyldig
   if (isNaN(dateObj.getTime())) {
-    console.error('❌ Ugyldig dato:', date);
+    console.error(`${LOG_PREFIXES.error} Ugyldig dato:`, date);
     return 'Ugyldig dato';
   }
   
@@ -41,7 +42,7 @@ export function formatDate(date: Date | string): string {
     minute: '2-digit',
   });
   
-  console.log('✅ Dato formateret:', formatted);
+  console.log(`${LOG_PREFIXES.success} Dato formateret:`, formatted);
   return formatted;
 }
 
@@ -51,12 +52,12 @@ export function formatDate(date: Date | string): string {
  * @returns Formateret dato som string
  */
 export function formatDateShort(date: Date | string): string {
-  console.log('📅 Formaterer kort dato:', date);
+  console.log(`${LOG_PREFIXES.form} Formaterer kort dato:`, date);
   
   const dateObj = typeof date === 'string' ? new Date(date) : date;
   
   if (isNaN(dateObj.getTime())) {
-    console.error('❌ Ugyldig dato:', date);
+    console.error(`${LOG_PREFIXES.error} Ugyldig dato:`, date);
     return 'Ugyldig dato';
   }
   
@@ -66,7 +67,7 @@ export function formatDateShort(date: Date | string): string {
     day: '2-digit',
   });
   
-  console.log('✅ Kort dato formateret:', formatted);
+  console.log(`${LOG_PREFIXES.success} Kort dato formateret:`, formatted);
   return formatted;
 }
 
@@ -75,14 +76,14 @@ export function formatDateShort(date: Date | string): string {
  * @returns Unikt ID som string
  */
 export function generateId(): string {
-  console.log('🆔 Genererer unikt ID...');
+  console.log(`${LOG_PREFIXES.info} Genererer unikt ID...`);
   
   // Bruger timestamp + random tal for at sikre unikhed
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substring(2);
   const id = `${timestamp}-${random}`;
   
-  console.log('✅ Unikt ID genereret:', id);
+  console.log(`${LOG_PREFIXES.success} Unikt ID genereret:`, id);
   return id;
 }
 
@@ -92,13 +93,13 @@ export function generateId(): string {
  * @returns true hvis email er gyldig, false ellers
  */
 export function isValidEmail(email: string): boolean {
-  console.log('📧 Validerer email:', email);
+  console.log(`${LOG_PREFIXES.form} Validerer email:`, email);
   
   // Simpel email regex validering
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const isValid = emailRegex.test(email);
   
-  console.log(`✅ Email validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`);
+  console.log(`${LOG_PREFIXES.success} Email validering: ${isValid ? 'Gyldig' : 'Ugyldig'}`);
   return isValid;
 }
 
@@ -109,15 +110,15 @@ export function isValidEmail(email: string): boolean {
  * @returns Trunkeret tekst
  */
 export function truncateText(text: string, maxLength: number): string {
-  console.log(`✂️ Trunkerer tekst til ${maxLength} tegn...`);
+  console.log(`${LOG_PREFIXES.form} Trunkerer tekst til ${maxLength} tegn...`);
   
   if (text.length <= maxLength) {
-    console.log('✅ Tekst er allerede kort nok');
+    console.log(`${LOG_PREFIXES.success} Tekst er allerede kort nok`);
     return text;
   }
   
   const truncated = text.substring(0, maxLength) + '...';
-  console.log('✅ Tekst trunkeret:', truncated);
+  console.log(`${LOG_PREFIXES.success} Tekst trunkeret:`, truncated);
   return truncated;
 }
 
@@ -127,15 +128,15 @@ export function truncateText(text: string, maxLength: number): string {
  * @returns Kapitaliseret tekst
  */
 export function capitalize(text: string): string {
-  console.log('🔤 Kapitaliserer tekst:', text);
+  console.log(`${LOG_PREFIXES.form} Kapitaliserer tekst:`, text);
   
   if (!text) {
-    console.log('ℹ️ Tom tekst, returnerer tom string');
+    console.log(`${LOG_PREFIXES.info} Tom tekst, returnerer tom string`);
     return '';
   }
   
   const capitalized = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-  console.log('✅ Tekst kapitaliseret:', capitalized);
+  console.log(`${LOG_PREFIXES.success} Tekst kapitaliseret:`, capitalized);
   return capitalized;
 }
 
@@ -145,11 +146,11 @@ export function capitalize(text: string): string {
  * @returns Promise der resolver efter ventetiden
  */
 export function delay(ms: number): Promise<void> {
-  console.log(`⏱️ Venter ${ms} millisekunder...`);
+  console.log(`${LOG_PREFIXES.info} Venter ${ms} millisekunder...`);
   
   return new Promise(resolve => {
     setTimeout(() => {
-      console.log('✅ Ventetid færdig');
+      console.log(`${LOG_PREFIXES.success} Ventetid færdig`);
       resolve();
     }, ms);
   });
@@ -161,7 +162,7 @@ export function delay(ms: number): Promise<void> {
  */
 export function isDevelopment(): boolean {
   const isDev = process.env.NODE_ENV === 'development';
-  console.log(`🔧 Udviklingsmiljø: ${isDev ? 'Ja' : 'Nej'}`);
+  console.log(`${LOG_PREFIXES.config} Udviklingsmiljø: ${isDev ? 'Ja' : 'Nej'}`);
   return isDev;
 }
 
@@ -172,7 +173,7 @@ export function isDevelopment(): boolean {
  */
 export function devLog(message: string, data?: any): void {
   if (isDevelopment()) {
-    console.log(`🔍 DEV: ${message}`, data || '');
+    console.log(`${LOG_PREFIXES.debug} DEV: ${message}`, data || '');
   }
 }
 

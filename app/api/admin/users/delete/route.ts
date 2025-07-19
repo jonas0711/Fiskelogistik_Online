@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../../libs/db';
 import { validateAdminToken } from '../../../../../libs/admin';
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Interface for API response
 interface ApiResponse {
@@ -21,7 +22,7 @@ interface ApiResponse {
  * @returns NextResponse med sletnings resultat
  */
 export async function DELETE(request: NextRequest) {
-  console.log('🗑️ Admin Delete User API kaldt...');
+  console.log(`${LOG_PREFIXES.delete} Admin Delete User API kaldt...`);
   
   try {
     // Valider admin token fra request header
@@ -40,7 +41,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    console.log('✅ Admin autorisation bekræftet for:', adminUser.email);
+    console.log(`${LOG_PREFIXES.success} Admin autorisation bekræftet for:`, adminUser.email);
     
     // Hent user ID fra URL parametre
     const { searchParams } = new URL(request.url);
@@ -63,7 +64,7 @@ export async function DELETE(request: NextRequest) {
     
     // Hvis vi kun har email, find brugeren først
     if (!userId && email) {
-      console.log('🔍 Finder bruger med email:', email);
+      console.log(`${LOG_PREFIXES.search} Finder bruger med email:`, email);
       
       const { data: { users }, error: findError } = await supabaseAdmin.auth.admin.listUsers();
       
@@ -93,11 +94,11 @@ export async function DELETE(request: NextRequest) {
       }
       
       userToDelete = foundUser.id;
-      console.log('✅ Bruger fundet:', foundUser.email);
+              console.log(`${LOG_PREFIXES.success} Bruger fundet:`, foundUser.email);
     }
     
     // Slet brugeren
-    console.log('🗑️ Sletter bruger:', userToDelete);
+    console.log(`${LOG_PREFIXES.delete} Sletter bruger:`, userToDelete);
     
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete as string);
     
@@ -113,7 +114,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    console.log('✅ Bruger slettet succesfuldt');
+    console.log(`${LOG_PREFIXES.success} Bruger slettet succesfuldt`);
     
     // Returner succes response
     return NextResponse.json(

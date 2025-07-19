@@ -156,9 +156,58 @@ export async function POST(request: NextRequest) {
     // Konverter data rækker til database format
     const recordsToInsert: Record<string, unknown>[] = [];
     
+    // Disclaimer tekst der skal filtreres væk
+    const disclaimerText = "Bemærk venligst, at en præstationsanalyse kun kan tage hensyn til delvise aspekter vedrørende driftsmåden (f.eks. friløb) og de påvirkningsfaktorer (f.eks. typen af indsættelse). Af denne grund er denne rapport kun en generel hjælp og bør aftales mellem chaufføren og køretræneren/flådechefen. Alvorligheden af brugen bestemt i Service MAN Perform og underklassificeringerne/den samlede vurdering er en MAN-specifik løsning og kan derfor ikke sammenlignes med ratings eller ydeevneindikatorer fra andre producenter.";
+    
+    /**
+     * Validerer om en række indeholder gyldig chaufførdata
+     */
+    const isValidDriverRow = (row: unknown[], rowIndex: number): boolean => {
+      // Tjek om rækken indeholder disclaimer tekst
+      const rowContainsDisclaimer = row.some(cell => 
+        typeof cell === 'string' && cell.includes(disclaimerText.substring(0, 50))
+      );
+      
+      if (rowContainsDisclaimer) {
+        console.log('🚫 Filtrerer væk række med disclaimer tekst (række', rowIndex + 1, ')');
+        return false;
+      }
+      
+      // Tjek om rækken indeholder for meget tekst (sandsynligvis ikke chaufførdata)
+      const textCells = row.filter(cell => typeof cell === 'string' && cell.length > 100);
+      if (textCells.length > 2) {
+        console.log('🚫 Filtrerer væk række med for meget tekst (række', rowIndex + 1, ')');
+        return false;
+      }
+      
+      // Tjek om rækken har chaufførnavn i første kolonne
+      const driverNameCell = row[0];
+      if (!driverNameCell || typeof driverNameCell !== 'string' || driverNameCell.trim().length < 2) {
+        console.log('🚫 Filtrerer væk række uden gyldigt chaufførnavn (række', rowIndex + 1, ')');
+        return false;
+      }
+      
+      // Tjek om chaufførnavnet ikke er en generisk tekst
+      const invalidNames = ['chauffør', 'driver', 'navn', 'name', 'total', 'sum', 'gennemsnit', 'average'];
+      const driverName = driverNameCell.toLowerCase().trim();
+      if (invalidNames.some(invalid => driverName.includes(invalid))) {
+        console.log('🚫 Filtrerer væk række med ugyldigt chaufførnavn:', driverNameCell, '(række', rowIndex + 1, ')');
+        return false;
+      }
+      
+      return true;
+    };
+    
+    console.log('🔍 Starter konvertering af data rækker...');
+    
     for (let i = 1; i < jsonData.length; i++) { // Start fra række 1 (skip headers)
       const row = jsonData[i] as unknown[];
       if (!row || row.length === 0) continue; // Skip tomme rækker
+      
+      // Valider om rækken indeholder gyldig chaufførdata
+      if (!isValidDriverRow(row, i)) {
+        continue; // Skip denne række
+      }
       
       const record: Record<string, unknown> = {
         month,
@@ -184,8 +233,9 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      // Kun tilføj hvis der er chauffør navn
-      if (record.driver_name) {
+      // Tilføj record hvis det har gyldig chaufførnavn
+      if (record.driver_name && typeof record.driver_name === 'string' && record.driver_name.trim() !== '') {
+        console.log('✅ Tilføjer chauffør record:', record.driver_name);
         recordsToInsert.push(record);
       }
     }

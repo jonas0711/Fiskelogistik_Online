@@ -3,6 +3,8 @@
  * Her definerer vi alle miljøvariabler og app-indstillinger
  */
 
+import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
+
 // Supabase konfiguration
 export const supabaseConfig = {
   // URL til dit Supabase projekt
@@ -49,7 +51,7 @@ export const dbConfig = {
 
 // Validering af konfiguration
 export function validateConfig() {
-  console.log('🔧 Validerer app konfiguration...');
+  console.log(`${LOG_PREFIXES.config} Validerer app konfiguration...`);
   
   // Tjek om Supabase variabler er sat
   if (!supabaseConfig.url) {
@@ -69,12 +71,12 @@ export function validateConfig() {
   
   // Tjek om der er whitelisted emails
   if (securityConfig.whitelistedEmails.length === 0) {
-    console.warn('⚠️ Ingen whitelisted emails fundet');
+    console.warn(`${LOG_PREFIXES.warning} Ingen whitelisted emails fundet`);
   } else {
-    console.log(`✅ ${securityConfig.whitelistedEmails.length} whitelisted emails fundet`);
+    console.log(`${LOG_PREFIXES.success} ${securityConfig.whitelistedEmails.length} whitelisted emails fundet`);
   }
   
-  console.log('✅ Konfiguration valideret succesfuldt');
+  console.log(`${LOG_PREFIXES.success} Konfiguration valideret succesfuldt`);
 }
 
 // Eksporter alle konfigurationer
