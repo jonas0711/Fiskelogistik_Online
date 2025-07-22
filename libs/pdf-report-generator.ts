@@ -1,7 +1,7 @@
 /**
  * PDF Rapport Generator Service
  * Konverterer rapport data til HTML og derefter til PDF
- * Identisk struktur med Python applikation og Word generator
+ * Hybrid løsning: Puppeteer lokalt, alternativ metode på Vercel
  */
 
 import puppeteer from 'puppeteer';
@@ -1035,43 +1035,90 @@ export class PDFReportGenerator {
   }
 
   /**
-   * Genererer PDF rapport med fixet viewport - konverterer HTML til PDF
+   * Detekterer om vi kører på Vercel eller lokalt
+   */
+  private isVercelEnvironment(): boolean {
+    return process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  }
+
+  /**
+   * Genererer PDF rapport med hybrid løsning
    */
   public async generateReport(): Promise<Buffer> {
     console.log(`${LOG_PREFIXES.form} Starter PDF rapport generering for ${this.config.reportType} rapport...`);
     
+    if (this.isVercelEnvironment()) {
+      console.log(`${LOG_PREFIXES.info} Kører på Vercel - bruger alternativ PDF metode`);
+      return this.generateReportForVercel();
+    } else {
+      console.log(`${LOG_PREFIXES.info} Kører lokalt - bruger Puppeteer`);
+      return this.generateReportWithPuppeteer();
+    }
+  }
+
+  /**
+   * Genererer PDF rapport med Puppeteer (lokalt)
+   */
+  private async generateReportWithPuppeteer(): Promise<Buffer> {
     try {
       // Generer HTML indhold
       const html = this.generateHTML();
       
-      // Opret browser instance til PDF konvertering med forbedret kvalitet
+      // Vercel-optimeret Puppeteer konfiguration for serverless miljø
       const browser = await puppeteer.launch({
         headless: true,
         args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox', 
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
-        ]
+          '--disable-features=VizDisplayCompositor',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-field-trial-config',
+          '--disable-ipc-flooding-protection',
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-default-apps',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-sync',
+          '--disable-translate',
+          '--hide-scrollbars',
+          '--mute-audio',
+          '--no-zygote',
+          '--single-process',
+          '--font-render-hinting=none'
+        ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        timeout: 30000
       });
 
       const page = await browser.newPage();
       
-      // Fixed viewport for at undgå sorte striber
+      // Optimerede viewport indstillinger for Vercel
       await page.setViewport({ 
-        width: 794,  // A4 bredde i pixels (210mm ved 96 DPI)
-        height: 1123, // A4 højde i pixels (297mm ved 96 DPI)
-        deviceScaleFactor: 2 // Højere DPI for skarpere tekst
+        width: 794,
+        height: 1123,
+        deviceScaleFactor: 1, // Reduceret for bedre performance
+        hasTouch: false,
+        isLandscape: false,
+        isMobile: false
       });
 
-      // Indlæs HTML med forbedret encoding
+      // Indlæs HTML med optimerede indstillinger
       await page.setContent(html, { 
-        waitUntil: 'networkidle0',
-        timeout: 30000 
+        waitUntil: 'domcontentloaded', // Hurtigere end networkidle0
+        timeout: 15000 
       });
 
-      // Generer PDF med optimerede indstillinger for at undgå sorte striber
+      // Venter kort for at sikre at CSS er loaded
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Generer PDF med Vercel-optimerede indstillinger
       const pdfBuffer = await page.pdf({
         format: 'A4',
         margin: {
@@ -1081,30 +1128,80 @@ export class PDFReportGenerator {
           right: '1.5cm'
         },
         printBackground: true,
-        preferCSSPageSize: true,
+        preferCSSPageSize: false, // Undgå problemer med CSS page size
         displayHeaderFooter: false,
-        scale: 1.0,
-        // Fix for sort stribe
-        width: '210mm',
-        height: '297mm'
+        scale: 1.0
       }) as Buffer;
       
       await browser.close();
       
-      console.log(`${LOG_PREFIXES.success} PDF rapport genereret succesfuldt - ${pdfBuffer.length} bytes`);
+      console.log(`${LOG_PREFIXES.success} PDF rapport genereret med Puppeteer - ${pdfBuffer.length} bytes`);
       return pdfBuffer;
       
     } catch (error) {
-      console.error(`${LOG_PREFIXES.error} Fejl ved PDF generering:`, error);
-      throw new Error(`PDF generering fejlede: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
+      console.error(`${LOG_PREFIXES.error} Fejl ved Puppeteer PDF generering:`, error);
+      
+      // Fallback til Vercel metode hvis Puppeteer fejler
+      console.log(`${LOG_PREFIXES.info} Fallback til Vercel PDF metode`);
+      return this.generateReportForVercel();
     }
   }
 
   /**
-   * Genererer PDF filnavn - identisk med Python navngivning
+   * Genererer PDF rapport for Vercel miljø (bruger intern API route)
+   */
+  private async generateReportForVercel(): Promise<Buffer> {
+    try {
+      // Generer HTML indhold
+      const html = this.generateHTML();
+      const filename = this.generateFilename();
+      
+      console.log(`${LOG_PREFIXES.info} Vercel miljø - bruger intern PDF konvertering API`);
+      
+      // Kald vores interne API route for at konvertere HTML til PDF
+      const baseUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : 'http://localhost:3000';
+      
+      const response = await fetch(`${baseUrl}/api/convert-html-to-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          html: html,
+          filename: filename
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`PDF konvertering API fejlede: ${response.status} ${response.statusText}`);
+      }
+      
+      const pdfBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(pdfBuffer);
+      
+      console.log(`${LOG_PREFIXES.success} PDF rapport genereret via API - ${buffer.length} bytes`);
+      return buffer;
+      
+    } catch (error) {
+      console.error(`${LOG_PREFIXES.error} Fejl ved Vercel PDF generering:`, error);
+      
+      // Fallback til HTML hvis API fejler
+      console.log(`${LOG_PREFIXES.info} Fallback til HTML format`);
+      const html = this.generateHTML();
+      const buffer = Buffer.from(html, 'utf-8');
+      
+      console.log(`${LOG_PREFIXES.success} HTML rapport genereret som fallback - ${buffer.length} bytes`);
+      return buffer;
+    }
+  }
+
+  /**
+   * Genererer filnavn - identisk med Python navngivning
    */
   public generateFilename(): string {
-    console.log(`${LOG_PREFIXES.form} Genererer PDF filnavn for ${this.config.reportType} rapport...`);
+    console.log(`${LOG_PREFIXES.form} Genererer filnavn for ${this.config.reportType} rapport...`);
     
     const monthNames = [
       'Januar', 'Februar', 'Marts', 'April', 'Maj', 'Juni',
@@ -1115,18 +1212,21 @@ export class PDFReportGenerator {
     const year = this.config.year || new Date().getFullYear();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
     
-    let filename = `Fiskelogistik_Chaufforrapport_${month}_${year}_${timestamp}.pdf`;
+    // Bestem filtype baseret på miljø
+    const fileExtension = this.isVercelEnvironment() ? 'html' : 'pdf';
+    
+    let filename = `Fiskelogistik_Chaufforrapport_${month}_${year}_${timestamp}.${fileExtension}`;
     
     if (this.config.reportType === 'individuel' && this.config.selectedDriver) {
       // Fjern ugyldige filnavn karakterer - identisk med Python sikker navngivning
       const safeName = this.config.selectedDriver.replace(/[^a-zA-Z0-9\s\-_]/g, '').replace(/\s+/g, '_');
-      filename = `Fiskelogistik_Chauffør_${safeName}_${month}_${year}_${timestamp}.pdf`;
+      filename = `Fiskelogistik_Chauffør_${safeName}_${month}_${year}_${timestamp}.${fileExtension}`;
     } else if (this.config.reportType === 'gruppe' && this.config.selectedGroup) {
       const safeGroupName = this.config.selectedGroup.replace(/[^a-zA-Z0-9\s\-_]/g, '').replace(/\s+/g, '_');
-      filename = `Fiskelogistik_Gruppe_${safeGroupName}_${month}_${year}_${timestamp}.pdf`;
+      filename = `Fiskelogistik_Gruppe_${safeGroupName}_${month}_${year}_${timestamp}.${fileExtension}`;
     }
     
-    console.log(`${LOG_PREFIXES.success} PDF filnavn genereret: ${filename}`);
+    console.log(`${LOG_PREFIXES.success} Filnavn genereret: ${filename}`);
     return filename;
   }
 } 
