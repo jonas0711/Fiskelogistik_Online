@@ -74,6 +74,25 @@ interface HistoricalData {
   };
 }
 
+// Interface for chaufførdata hentet fra Supabase driver_data tabellen
+interface DriverData {
+  driver_name?: string; // Navn på chauffør
+  engine_runtime?: string; // Motortid i format hh:mm:ss
+  idle_standstill_time?: string; // Tomgangstid i format hh:mm:ss
+  driving_distance?: number; // Kørte kilometer
+  cruise_distance_over_50?: number; // Km med fartpilot over 50 km/t
+  distance_over_50_without_cruise?: number; // Km over 50 km/t uden fartpilot
+  engine_brake_distance?: number; // Km med motorbremse
+  service_brake_km?: number; // Km med driftsbremse
+  active_coasting_km?: number; // Km med påløbsdrift
+  coasting_distance?: number; // Yderligere km med påløbsdrift
+  overspeed_km_without_coasting?: number; // Km over hastighedsgrænse uden påløbsdrift
+  total_consumption?: number; // Brændstofforbrug
+  avg_total_weight?: number; // Gennemsnitlig vægt
+  co2_emission?: number; // CO2-udledning
+  driving_time?: string; // Kørselstid i format hh:mm:ss
+}
+
 export default function RIOKPIPage() {
   console.log('📈 Initialiserer avanceret RIO KPI Dashboard...');
   
@@ -261,8 +280,8 @@ export default function RIOKPIPage() {
   /**
    * Beregner KPIer Python-style: Beregner KPIer per chauffør, tager gennemsnit
    */
-  const calculateKPIsPythonStyle = (data: any[], month: number, year: number): KPIData => {
-    console.log('🧮 Beregner KPIer Python-style for', data.length, 'chauffører...');
+  const calculateKPIsPythonStyle = (data: DriverData[], month: number, year: number): KPIData => {
+    console.log('# [DEBUG] KPI: Beregner KPIer Python-style for', data.length, 'chauffører...');
     
     // Beregn KPIer for hver chauffør (som Python: beregn_noegletal for hver chauffør)
     const driverKPIs = data.map(driver => {
@@ -371,8 +390,8 @@ export default function RIOKPIPage() {
   /**
    * Beregner alle KPIer baseret på chaufførdata (aggregation metode)
    */
-  const calculateKPIs = (data: any[], month: number, year: number): KPIData => {
-    console.log('🧮 Beregner KPIer for', data.length, 'chauffører...');
+  const calculateKPIs = (data: DriverData[], month: number, year: number): KPIData => {
+    console.log('# [DEBUG] KPI: Beregner KPIer for', data.length, 'chauffører...');
     console.log('📊 Debug: Minimum distance filter:', minDistanceFilter);
     console.log('📊 Debug: Måned/år:', month, year);
     

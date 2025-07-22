@@ -12,6 +12,32 @@ export async function POST(request: NextRequest) {
   console.log('📤 RIO Upload API kaldt...');
   
   try {
+    // Tjek bruger session direkte med Supabase klient
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      console.error('❌ Ingen gyldig session for upload');
+      return NextResponse.json({
+        success: false,
+        message: 'Ingen gyldig session',
+        error: 'UNAUTHORIZED'
+      }, { status: 401 });
+    }
+    
+    console.log('✅ Session fundet for upload:', session.user?.email);
+    
+    // Tjek admin status
+    const { isAdmin } = await import('../../../../libs/admin');
+    const adminStatus = await isAdmin();
+    if (!adminStatus) {
+      console.error('❌ Bruger er ikke admin');
+      return NextResponse.json({
+        success: false,
+        message: 'Kun administratorer kan uploade data',
+        error: 'FORBIDDEN'
+      }, { status: 403 });
+    }
+    
     // Parse multipart form data
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -28,12 +54,20 @@ export async function POST(request: NextRequest) {
     // Valider input
     if (!file) {
       console.error('❌ Ingen fil modtaget');
-      return NextResponse.json({ error: 'Ingen fil modtaget' }, { status: 400 });
+      return NextResponse.json({
+        success: false,
+        message: 'Ingen fil modtaget',
+        error: 'NO_FILE'
+      }, { status: 400 });
     }
     
     if (!month || !year) {
       console.error('❌ Manglende måned eller år');
-      return NextResponse.json({ error: 'Manglende måned eller år' }, { status: 400 });
+      return NextResponse.json({
+        success: false,
+        message: 'Manglende måned eller år',
+        error: 'INVALID_PERIOD'
+      }, { status: 400 });
     }
     
     // Tjek filtype
@@ -44,7 +78,11 @@ export async function POST(request: NextRequest) {
     
     if (!validTypes.includes(file.type)) {
       console.error('❌ Ugyldig filtype:', file.type);
-      return NextResponse.json({ error: 'Kun Excel-filer (.xlsx, .xls) er tilladt' }, { status: 400 });
+      return NextResponse.json({
+        success: false,
+        message: 'Kun Excel-filer (.xlsx, .xls) er tilladt',
+        error: 'INVALID_FILE_TYPE'
+      }, { status: 400 });
     }
     
     // Konverter fil til buffer
@@ -76,8 +114,10 @@ export async function POST(request: NextRequest) {
     const missingHeaders = requiredHeaders.filter(header => !headers.includes(header));
     if (missingHeaders.length > 0) {
       console.error('❌ Manglende headers:', missingHeaders);
-      return NextResponse.json({ 
-        error: `Manglende kolonner: ${missingHeaders.join(', ')}` 
+      return NextResponse.json({
+        success: false,
+        message: `Manglende kolonner: ${missingHeaders.join(', ')}`,
+        error: 'MISSING_HEADERS'
       }, { status: 400 });
     }
     
@@ -244,7 +284,11 @@ export async function POST(request: NextRequest) {
     
     if (recordsToInsert.length === 0) {
       console.error('❌ Ingen gyldige data fundet');
-      return NextResponse.json({ error: 'Ingen gyldige chaufførdata fundet i filen' }, { status: 400 });
+      return NextResponse.json({
+        success: false,
+        message: 'Ingen gyldige chaufførdata fundet i filen',
+        error: 'NO_VALID_DATA'
+      }, { status: 400 });
     }
     
     // Indsæt data i database
@@ -255,23 +299,31 @@ export async function POST(request: NextRequest) {
     
     if (error) {
       console.error('❌ Database fejl:', error);
-      return NextResponse.json({ error: `Database fejl: ${error.message}` }, { status: 500 });
+      return NextResponse.json({
+        success: false,
+        message: 'Database fejl',
+        error: error.message
+      }, { status: 500 });
     }
     
     console.log('✅ Data indsættet succesfuldt:', recordsToInsert.length, 'records');
     
     return NextResponse.json({
       success: true,
-      recordsProcessed: recordsToInsert.length,
-      month,
-      year,
-      message: `${recordsToInsert.length} chauffører behandlet for ${month}/${year}`
+      message: `${recordsToInsert.length} chauffører behandlet for ${month}/${year}`,
+      data: {
+        recordsProcessed: recordsToInsert.length,
+        month,
+        year
+      }
     });
     
   } catch (error) {
     console.error('❌ Uventet fejl i upload API:', error);
-    return NextResponse.json({ 
-      error: 'Der opstod en uventet fejl under behandling af filen' 
+    return NextResponse.json({
+      success: false,
+      message: 'Der opstod en uventet fejl under behandling af filen',
+      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR'
     }, { status: 500 });
   }
 } 

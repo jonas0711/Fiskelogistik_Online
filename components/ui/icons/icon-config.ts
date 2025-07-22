@@ -95,4 +95,8 @@ export const LOG_PREFIXES = {
   error: '[ERROR]',
   warning: '[WARNING]',
   info: '[INFO]',
+  found: '[FOUND]',
+  notfound: '[NOT_FOUND]',
+  newdriver: '[NEW_DRIVER]',
+  limit: '[LIMIT]',
 } as const; 

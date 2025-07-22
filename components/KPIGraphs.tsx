@@ -16,9 +16,11 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  TooltipItem
 } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
+import { AnnotationOptions } from 'chartjs-plugin-annotation'; // Importér korrekt type til annotation-objekter
 import { Line } from 'react-chartjs-2';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -275,10 +277,12 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
           },
           padding: 16,
           callbacks: {
-            title: (context: any) => {
+            // Tooltip title callback: context er et array af TooltipItem<'line'>
+            title: (context: TooltipItem<'line'>[]) => {
               return context[0].label;
             },
-            label: (context: any) => {
+            // Tooltip label callback: context er et TooltipItem<'line'>
+            label: (context: TooltipItem<'line'>) => {
               const value = context.parsed.y;
               // Bestem antal decimaler baseret på enhed
               let decimals = 2;
@@ -391,7 +395,8 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
   const createTargetAnnotations = (kpiName: string) => {
     const config = kpiConfig[kpiName];
     
-    const annotations: any = {};
+    // Annotations-objektet skal være et map af string til AnnotationOptions
+    const annotations: Record<string, AnnotationOptions> = {};
 
     if (config.maal_min !== undefined && config.maal_max !== undefined) {
       if (config.hoejere_er_bedre) {
@@ -406,6 +411,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
           borderColor: 'rgba(2, 104, 171, 0.3)',
           borderWidth: 2,
           borderDash: [8, 4],
+          borderRadius: 4, // Sæt borderRadius direkte på annotation-objektet
           label: {
             content: `Målområde (${config.maal_min}-${config.maal_max} ${config.enhed})`,
             position: 'start',
@@ -414,9 +420,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
               size: 12,
               weight: 'bold'
             },
-            padding: 6,
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: 4
+            padding: 6
           }
         };
         
@@ -437,9 +441,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
             font: {
               size: 10,
               weight: 'bold'
-            },
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: 3
+            }
           }
         };
         
@@ -459,9 +461,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
             font: {
               size: 10,
               weight: 'bold'
-            },
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: 3
+            }
           }
         };
       } else {
@@ -476,6 +476,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
           borderColor: 'rgba(2, 104, 171, 0.3)',
           borderWidth: 2,
           borderDash: [8, 4],
+          borderRadius: 4, // Sæt borderRadius direkte på annotation-objektet
           label: {
             content: `Målområde (0-${config.maal_max} ${config.enhed})`,
             position: 'start',
@@ -484,9 +485,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
               size: 12,
               weight: 'bold'
             },
-            padding: 6,
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: 4
+            padding: 6
           }
         };
         
@@ -507,9 +506,7 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
             font: {
               size: 10,
               weight: 'bold'
-            },
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            borderRadius: 3
+            }
           }
         };
       }
@@ -602,9 +599,12 @@ export default function KPIGraphs({ historicalData }: KPIGraphsProps) {
         const graphOptions = createGraphOptions(kpiName);
         const annotations = createTargetAnnotations(kpiName);
 
-        // Tilføj målområde annotations
+        // Cast graphOptions til ChartOptions<'line'> for at kunne tilføje plugins.annotation
         if (Object.keys(annotations).length > 0) {
-          (graphOptions as any).plugins.annotation = annotations;
+          (graphOptions as import('chart.js').ChartOptions<'line'>).plugins = {
+            ...graphOptions.plugins,
+            annotation: annotations
+          };
         }
 
         return (
