@@ -20,7 +20,8 @@ import {
   FileText, 
   TrendingUp, 
   Settings, 
-  Wrench 
+  Wrench,
+  Mail
 } from 'lucide-react';
 
 // Interface for navigation item
@@ -68,6 +69,13 @@ export default function RIONavigation({ isAdmin = false }: { isAdmin?: boolean }
       description: 'Se KPI oversigt og trends',
       path: '/rio/kpi',
       icon: <TrendingUp className="w-8 h-8 text-orange-600" />
+    },
+    {
+      id: 'mail',
+      title: 'Mail System',
+      description: 'Send rapport emails til chauffører',
+      path: '/rio/mail',
+      icon: <Mail className="w-8 h-8 text-indigo-600" />
     },
     {
       id: 'settings',

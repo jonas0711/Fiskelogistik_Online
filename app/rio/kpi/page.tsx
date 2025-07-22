@@ -8,8 +8,7 @@
 
 import { useState, useEffect } from 'react'; // React hooks til state og side-effekter
 import { useRouter } from 'next/navigation'; // Next.js navigation hook
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // ShadCN card komponenter
-import { Label } from '@/components/ui/label'; // ShadCN label komponent
+import { Card, CardContent } from '@/components/ui/card'; // ShadCN card komponenter
 import CommonHeader from '@/components/CommonHeader'; // Fælles header komponent
 import BreadcrumbNavigation from '@/components/BreadcrumbNavigation'; // Breadcrumb navigation
 import KPIGraphs from '@/components/KPIGraphs'; // KPI Grafer komponent
@@ -388,174 +387,6 @@ export default function RIOKPIPage() {
   };
   
   /**
-   * Beregner alle KPIer baseret på chaufførdata (aggregation metode)
-   */
-  const calculateKPIs = (data: DriverData[], month: number, year: number): KPIData => {
-    console.log('# [DEBUG] KPI: Beregner KPIer for', data.length, 'chauffører...');
-    console.log('📊 Debug: Minimum distance filter:', minDistanceFilter);
-    console.log('📊 Debug: Måned/år:', month, year);
-    
-    // Debug: Vis første chauffør data
-    if (data.length > 0) {
-      console.log('📊 Debug: Første chauffør data:', {
-        driver_name: data[0].driver_name,
-        driving_distance: data[0].driving_distance,
-        engine_runtime: data[0].engine_runtime,
-        idle_standstill_time: data[0].idle_standstill_time,
-        cruise_distance_over_50: data[0].cruise_distance_over_50,
-        distance_over_50_without_cruise: data[0].distance_over_50_without_cruise,
-        engine_brake_distance: data[0].engine_brake_distance,
-        service_brake_km: data[0].service_brake_km,
-        active_coasting_km: data[0].active_coasting_km,
-        coasting_distance: data[0].coasting_distance,
-        overspeed_km_without_coasting: data[0].overspeed_km_without_coasting,
-        total_consumption: data[0].total_consumption,
-        avg_total_weight: data[0].avg_total_weight,
-        co2_emission: data[0].co2_emission
-      });
-    }
-    
-    // Aggreger data
-    const totalDrivers = data.length;
-    const totalDistance = data.reduce((sum, driver) => sum + (driver.driving_distance || 0), 0);
-    
-    // Tidsdata - konverter hh:mm:ss til sekunder (som Python-versionen)
-    const totalEngineRuntime = data.reduce((sum, driver) => {
-      return sum + convertTimeToSeconds(driver.engine_runtime || '0:00:00');
-    }, 0);
-    
-    const totalDrivingTime = data.reduce((sum, driver) => {
-      return sum + convertTimeToSeconds(driver.driving_time || '0:00:00');
-    }, 0);
-    
-    const totalIdleTime = data.reduce((sum, driver) => {
-      return sum + convertTimeToSeconds(driver.idle_standstill_time || '0:00:00');
-    }, 0);
-    
-    // Afstandsdata
-    const totalCruiseDistance = data.reduce((sum, driver) => {
-      return sum + (driver.cruise_distance_over_50 || 0);
-    }, 0);
-    
-    const totalDistanceOver50 = data.reduce((sum, driver) => {
-      return sum + (driver.cruise_distance_over_50 || 0) + (driver.distance_over_50_without_cruise || 0);
-    }, 0);
-    
-    const totalEngineBrakeDistance = data.reduce((sum, driver) => {
-      return sum + (driver.engine_brake_distance || 0);
-    }, 0);
-    
-    const totalServiceBrakeDistance = data.reduce((sum, driver) => {
-      return sum + (driver.service_brake_km || 0);
-    }, 0);
-    
-    const totalCoastingDistance = data.reduce((sum, driver) => {
-      return sum + (driver.active_coasting_km || 0) + (driver.coasting_distance || 0);
-    }, 0);
-    
-    const totalOverspeedDistance = data.reduce((sum, driver) => {
-      return sum + (driver.overspeed_km_without_coasting || 0);
-    }, 0);
-    
-    // Forbrugsdata
-    const totalConsumption = data.reduce((sum, driver) => {
-      return sum + (driver.total_consumption || 0);
-    }, 0);
-    
-    const totalWeight = data.reduce((sum, driver) => {
-      return sum + (driver.avg_total_weight || 0);
-    }, 0);
-    
-    const totalCO2 = data.reduce((sum, driver) => {
-      return sum + (driver.co2_emission || 0);
-    }, 0);
-    
-    // Beregn KPIer (korrigeret til at matche Python-versionen)
-    const idlePercentage = totalEngineRuntime > 0 ? (totalIdleTime / totalEngineRuntime) * 100 : 0;
-    const cruiseControlPercentage = totalDistanceOver50 > 0 ? (totalCruiseDistance / totalDistanceOver50) * 100 : 0;
-    const engineBrakePercentage = (totalEngineBrakeDistance + totalServiceBrakeDistance) > 0 ? 
-      (totalEngineBrakeDistance / (totalEngineBrakeDistance + totalServiceBrakeDistance)) * 100 : 0;
-    const coastingPercentage = totalDistance > 0 ? (totalCoastingDistance / totalDistance) * 100 : 0;
-    const dieselEfficiency = totalConsumption > 0 ? totalDistance / totalConsumption : 0;
-    
-    // Vægtkorrigeret forbrug - korrigeret til at bruge total vægt (ikke gennemsnit per chauffør)
-    const weightAdjustedConsumption = totalDistance > 0 && totalWeight > 0 ? 
-      ((totalConsumption / totalDistance) * 100) / totalWeight : 0;
-    
-    const overspeedPercentage = totalDistance > 0 ? (totalOverspeedDistance / totalDistance) * 100 : 0;
-    
-    // CO₂ effektivitet - korrigeret til at bruge total vægt (ikke gennemsnit per chauffør)
-    const co2Efficiency = totalDistance > 0 && totalWeight > 0 ? 
-      (totalCO2 / totalDistance) / totalWeight : 0;
-    
-    // Debug: Vis beregnede totaler
-    console.log('📊 Debug: Beregnede totaler:', {
-      totalDrivers,
-      totalDistance: totalDistance.toFixed(2),
-      totalEngineRuntime: totalEngineRuntime.toFixed(2),
-      totalIdleTime: totalIdleTime.toFixed(2),
-      totalCruiseDistance: totalCruiseDistance.toFixed(2),
-      totalDistanceOver50: totalDistanceOver50.toFixed(2),
-      totalEngineBrakeDistance: totalEngineBrakeDistance.toFixed(2),
-      totalServiceBrakeDistance: totalServiceBrakeDistance.toFixed(2),
-      totalCoastingDistance: totalCoastingDistance.toFixed(2),
-      totalOverspeedDistance: totalOverspeedDistance.toFixed(2),
-      totalConsumption: totalConsumption.toFixed(2),
-      totalWeight: totalWeight.toFixed(2),
-      totalCO2: totalCO2.toFixed(2)
-    });
-    
-    // Bestem periode - viser specifik måned
-    const monthNames = [
-      'Januar', 'Februar', 'Marts', 'April', 'Maj', 'Juni',
-      'Juli', 'August', 'September', 'Oktober', 'November', 'December'
-    ];
-    const period = `${monthNames[month - 1]} ${year}`;
-    
-    console.log('✅ KPIer beregnet:', {
-      idlePercentage: idlePercentage.toFixed(2),
-      cruiseControlPercentage: cruiseControlPercentage.toFixed(2),
-      engineBrakePercentage: engineBrakePercentage.toFixed(2),
-      coastingPercentage: coastingPercentage.toFixed(2),
-      dieselEfficiency: dieselEfficiency.toFixed(2),
-      weightAdjustedConsumption: weightAdjustedConsumption.toFixed(2),
-      overspeedPercentage: overspeedPercentage.toFixed(2),
-      co2Efficiency: co2Efficiency.toFixed(2)
-    });
-    
-    return {
-      totalDrivers,
-      totalDistance,
-      period,
-      idlePercentage,
-      cruiseControlPercentage,
-      engineBrakePercentage,
-      coastingPercentage,
-      dieselEfficiency,
-      weightAdjustedConsumption,
-      overspeedPercentage,
-      co2Efficiency,
-      // Farveindikatorer og ændringer sættes senere
-      idleColor: 'text-blue-600',
-      cruiseColor: 'text-blue-600',
-      engineBrakeColor: 'text-blue-600',
-      coastingColor: 'text-blue-600',
-      dieselColor: 'text-blue-600',
-      weightColor: 'text-blue-600',
-      overspeedColor: 'text-blue-600',
-      co2Color: 'text-blue-600',
-      idleChange: 0,
-      cruiseChange: 0,
-      engineBrakeChange: 0,
-      coastingChange: 0,
-      dieselChange: 0,
-      weightChange: 0,
-      overspeedChange: 0,
-      co2Change: 0
-    };
-  };
-  
-  /**
    * Konverterer tidsformat hh:mm:ss til sekunder (som Python-versionen)
    */
   const convertTimeToSeconds = (timeString: string): number => {
@@ -656,7 +487,6 @@ export default function RIOKPIPage() {
    */
   const formatPercentageWithChange = (value: number, change: number, color: string) => {
     const arrow = change > 0 ? '↑' : change < 0 ? '↓' : '';
-    const changeText = change !== 0 ? ` ${arrow} ${Math.abs(change).toFixed(1)}%` : '';
     
     return (
       <div className="text-center">
@@ -677,7 +507,6 @@ export default function RIOKPIPage() {
    */
   const formatValueWithChange = (value: number, change: number, color: string, unit: string) => {
     const arrow = change > 0 ? '↑' : change < 0 ? '↓' : '';
-    const changeText = change !== 0 ? ` ${arrow} ${Math.abs(change).toFixed(1)}%` : '';
     
     // Bestem antal decimaler baseret på enhed
     let decimals = 2;

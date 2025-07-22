@@ -6,6 +6,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
+import { supabase } from '@/libs/db';
 
 /**
  * Kombinerer CSS klasser på en smart måde
@@ -177,6 +178,40 @@ export function devLog(message: string, data?: any): void {
   }
 }
 
+/**
+ * Henter den seneste tilgængelige periode fra driver_data tabellen
+ * Bruges til at sikre at mail sending og rapporter bruger eksisterende data
+ */
+export async function getLatestAvailablePeriod(): Promise<{ month: number; year: number } | null> {
+  console.log('🔍 Henter seneste tilgængelige periode fra database...');
+  
+  try {
+    const { data: latestPeriodData, error: periodError } = await supabase
+      .from('driver_data')
+      .select('month, year')
+      .order('year', { ascending: false })
+      .order('month', { ascending: false })
+      .limit(1);
+    
+    if (periodError || !latestPeriodData || latestPeriodData.length === 0) {
+      console.error('❌ Kunne ikke hente seneste periode:', periodError);
+      return null;
+    }
+    
+    const latestPeriod = latestPeriodData[0];
+    console.log(`📅 Seneste tilgængelige periode: ${latestPeriod.month}/${latestPeriod.year}`);
+    
+    return {
+      month: latestPeriod.month,
+      year: latestPeriod.year
+    };
+    
+  } catch (error) {
+    console.error('❌ Fejl ved hentning af seneste periode:', error);
+    return null;
+  }
+}
+
 // Eksporter alle funktioner
 export default {
   cn,
@@ -189,4 +224,5 @@ export default {
   delay,
   isDevelopment,
   devLog,
+  getLatestAvailablePeriod,
 }; 

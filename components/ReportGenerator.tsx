@@ -207,7 +207,7 @@ export default function ReportGenerator() {
    * Håndterer ændring af minimum kilometer
    */
   const handleMinKmChange = (value: string) => {
-    const minKm = parseInt(value) || 1000;
+    const minKm = parseInt(value) || 100;
     console.log('📏 Minimum kilometer ændret til:', minKm);
     
     setReportConfig(prev => ({

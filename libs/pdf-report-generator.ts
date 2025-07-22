@@ -819,19 +819,19 @@ export class PDFReportGenerator {
       },
       'Diesel Effektivitet': { 
         format: (val: number) => `${val.toFixed(2)} km/l`, 
-        target: 'Højere er bedre', 
+        target: '', // Ingen mål-værdi for de sidste tre nøgletal - ligesom i gamle Word-format
         explanation: 'Antal kilometer kørt per liter brændstof. Højere er bedre.',
         higherIsBetter: true
       },
       'Vægtkorrigeret Forbrug': { 
         format: (val: number) => `${val.toFixed(2)} l/100km/t`, 
-        target: 'Lavere er bedre', 
+        target: '', // Ingen mål-værdi for de sidste tre nøgletal - ligesom i gamle Word-format
         explanation: 'Brændstofforbrug justeret for lastens vægt. Lavere er bedre.',
         higherIsBetter: false
       },
       'Overspeed Andel': { 
         format: (val: number) => `${val.toFixed(1)}%`, 
-        target: 'Under 1%', 
+        target: '', // Ingen mål-værdi for de sidste tre nøgletal - ligesom i gamle Word-format
         explanation: 'Procentdel af køretid over hastighedsgrænsen. Lavere er bedre.',
         higherIsBetter: false
       }
@@ -969,15 +969,52 @@ export class PDFReportGenerator {
         break;
         
       case 'individuel':
-        // Generer kun for den valgte chauffør med sammenligning
+        // Generer kun for den valgte chauffør MED rangeringer for sammenligning
         const selectedDriver = this.config.drivers.find(d => d.driver_name === this.config.selectedDriver);
         if (selectedDriver) {
           const previousDriver = this.config.previousDrivers?.find(pd => pd.driver_name === selectedDriver.driver_name);
+          console.log(`${LOG_PREFIXES.info} Individuel rapport for ${selectedDriver.driver_name}:`, {
+            hasPreviousData: !!previousDriver,
+            previousMonth: previousDriver?.month,
+            previousYear: previousDriver?.year,
+            currentMonth: selectedDriver.month,
+            currentYear: selectedDriver.year
+          });
           driversHTML = this.generateDriverDetailsHTML(selectedDriver, previousDriver);
         }
         break;
     }
 
+    // For individuelle rapporter: inkluder rangeringer så chaufføren kan se deres placering
+    // Dette giver chaufføren kontekst om deres præstation i forhold til alle andre chauffører
+    if (this.config.reportType === 'individuel') {
+      console.log(`${LOG_PREFIXES.info} Genererer individuel rapport med rangeringer:`, {
+        totalDrivers: this.config.drivers.length,
+        overallRankingLength: this.config.overallRanking.length,
+        selectedDriver: this.config.selectedDriver,
+        allDriversForRanking: this.config.drivers.map(d => d.driver_name).slice(0, 5) // Vis første 5 chauffører
+      });
+      
+      return `
+        <!DOCTYPE html>
+        <html lang="da">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Fiskelogistik Chaufførrapport - ${this.config.period}</title>
+          ${this.generateCSS()}
+        </head>
+        <body>
+          ${this.generateFrontPage()}
+          ${this.generateOverallRankingHTML()}
+          ${this.generatePerformanceRankingHTML()}
+          ${driversHTML}
+        </body>
+        </html>
+      `;
+    }
+
+    // For samlet og gruppe rapporter: behold rangeringer
     return `
       <!DOCTYPE html>
       <html lang="da">

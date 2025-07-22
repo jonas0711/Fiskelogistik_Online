@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label'; // ShadCN label komponent
 import { Input } from '@/components/ui/input'; // ShadCN input komponent
 import CommonHeader from '@/components/CommonHeader'; // Fælles header komponent
 import BreadcrumbNavigation from '@/components/BreadcrumbNavigation'; // Breadcrumb navigation
+import MailConfigCard from '@/components/MailConfigCard';
+import MailLogViewer from '@/components/MailLogViewer'; // Mail konfiguration komponent
 import { supabase } from '../../../libs/db'; // Vores Supabase klient
 import { isAdmin } from '../../../libs/admin'; // Admin funktioner
 import { toast } from 'sonner'; // Toast notifikationer
@@ -406,6 +408,12 @@ export default function RIOSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        
+        {/* Mail Configuration - kun for admin brugere */}
+        <MailConfigCard isAdmin={isUserAdmin} />
+        
+        {/* Mail Logs - kun for admin brugere */}
+        <MailLogViewer isAdmin={isUserAdmin} />
         
         {/* System information */}
         <Card className="mb-6 shadow-lg border-0 bg-white/95 backdrop-blur-sm dark:bg-gray-800/95">

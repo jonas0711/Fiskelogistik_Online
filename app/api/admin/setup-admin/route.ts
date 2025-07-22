@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
  * GET /api/admin/setup-admin
  * Lister alle brugere og deres admin status
  */
-export async function GET(request: NextRequest) {
+export async function GET() { // Fjernet 'request' parameter, da den ikke blev brugt og gav ESLint-advarsel
   console.log('📋 Admin API: Lister brugere');
   
   try {

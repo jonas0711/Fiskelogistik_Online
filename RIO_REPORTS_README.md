@@ -268,7 +268,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 ### 2. Standard Indstillinger
-- **Minimum kilometer:** 1000 km
+- **Minimum kilometer:** 100 km
 - **Rapport format:** Word (.docx)
 - **Sortering:** Nyeste perioder først
 
