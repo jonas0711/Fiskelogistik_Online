@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'; // ShadCN input komponent
 import { Label } from '@/components/ui/label'; // ShadCN label komponent
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
+import { authenticatedFormDataFetch, handleAuthError } from '@/libs/client-auth';
+import { toast } from 'sonner'; // Toast notifications
 
 // Interface for upload status
 interface UploadStatus {
@@ -164,32 +166,33 @@ export default function DataUploadForm() {
         });
       }, 200);
       
-      // Send til API
-      console.log(`${LOG_PREFIXES.info} Sender request til /api/rio/upload...`);
-      const response = await fetch('/api/rio/upload', {
-        method: 'POST',
-        body: formData
-      });
-      
-      console.log(`${LOG_PREFIXES.info} Response status:`, response.status, response.statusText);
+      // Brug authenticated FormData fetch
+      console.log(`${LOG_PREFIXES.info} Sender authenticated request til /api/rio/upload...`);
+      const result = await authenticatedFormDataFetch('/api/rio/upload', formData);
       
       clearInterval(progressInterval);
       
-      if (!response.ok) {
-        console.error(`${LOG_PREFIXES.error} Upload fejlede med status:`, response.status);
-        const errorData = await response.json();
-        console.error(`${LOG_PREFIXES.error} Error data:`, errorData);
-        throw new Error(errorData.error || `Upload fejlede (${response.status})`);
+      if (!result.success) {
+        console.error(`${LOG_PREFIXES.error} Upload fejlede:`, result.error);
+        
+        // Håndter authentication fejl
+        if (result.error === 'UNAUTHORIZED' || result.message?.includes('Session udløbet')) {
+          handleAuthError(result.error || 'UNAUTHORIZED');
+          return;
+        } else if (result.error === 'FORBIDDEN') {
+          toast.error('Du har ikke tilladelse til at uploade filer. Kontakt administrator.');
+          return;
+        }
+        
+        throw new Error(result.message || `Upload fejlede`);
       }
       
-      const result = await response.json();
-      
-      console.log(`${LOG_PREFIXES.success} Upload succesfuldt:`, result);
+      console.log(`${LOG_PREFIXES.success} Upload succesfuldt:`, result.data);
       
       setUploadStatus({
         isUploading: false,
         progress: 100,
-        message: `Upload fuldført! ${result.recordsProcessed} records importeret.`
+        message: `Upload fuldført! ${result.data.recordsProcessed} records importeret.`
       });
       
       // Reset form

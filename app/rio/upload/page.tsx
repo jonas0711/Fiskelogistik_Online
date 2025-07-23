@@ -18,6 +18,7 @@ import ScrollToTop from '@/components/ScrollToTop'; // Scroll til toppen
 import { supabase } from '../../../libs/db'; // Vores Supabase klient
 import { isAdmin } from '../../../libs/admin'; // Admin funktioner
 import { toast } from 'sonner'; // Toast notifikationer
+import { authenticatedFormDataFetch, handleAuthError } from '../../../libs/client-auth'; // Authentication utility
 
 export default function RIOUploadPage() {
   console.log('📤 Initialiserer RIO Upload Page...');
@@ -115,10 +116,10 @@ export default function RIOUploadPage() {
   };
   
   /**
-   * Håndterer upload af fil
+   * Håndterer upload af fil med authentication
    */
   const handleUpload = async () => {
-    console.log('📤 Starter upload af fil...');
+    console.log('📤 Starter authenticated upload af fil...');
     
     if (!selectedFile) {
       toast.error('Vælg venligst en fil først');
@@ -136,17 +137,12 @@ export default function RIOUploadPage() {
       
       console.log('📊 Uploader data for måned:', selectedMonth, 'år:', selectedYear);
       
-      // Send til API endpoint
-      const response = await fetch('/api/rio/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      // Brug authenticated FormData fetch
+      const result = await authenticatedFormDataFetch('/api/rio/upload', formData);
       
-      const result = await response.json();
-      
-      if (response.ok) {
-        console.log('✅ Upload succesfuld:', result);
-        toast.success(`Data uploadet succesfuldt! ${result.recordsProcessed} chauffører behandlet.`);
+      if (result.success) {
+        console.log('✅ Upload succesfuld:', result.data);
+        toast.success(`Data uploadet succesfuldt! ${result.data.recordsProcessed} chauffører behandlet.`);
         
         // Reset form
         setSelectedFile(null);
@@ -155,12 +151,20 @@ export default function RIOUploadPage() {
         }
       } else {
         console.error('❌ Upload fejl:', result.error);
-        toast.error(`Upload fejlede: ${result.error}`);
+        
+        // Håndter authentication fejl
+        if (result.error === 'UNAUTHORIZED' || result.message?.includes('Session udløbet')) {
+          handleAuthError(result.error || 'UNAUTHORIZED');
+        } else if (result.error === 'FORBIDDEN') {
+          toast.error('Du har ikke tilladelse til at uploade filer. Kontakt administrator.');
+        } else {
+          toast.error(result.message || 'Upload fejlede');
+        }
       }
       
     } catch (error) {
-      console.error('❌ Fejl under upload:', error);
-      toast.error('Der opstod en fejl under upload. Prøv igen.');
+      console.error('❌ Uventet fejl under upload:', error);
+      toast.error('Der opstod en uventet fejl under upload. Prøv igen.');
     } finally {
       setIsUploading(false);
     }

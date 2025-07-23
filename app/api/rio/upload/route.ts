@@ -4,54 +4,19 @@
  * Konverterer Excel-data til Supabase database
  */
 
-import { NextRequest, NextResponse } from 'next/server'; // Next.js request/response typer
+import { NextRequest } from 'next/server'; // Next.js request/response typer
 import { supabase } from '../../../../libs/db'; // Vores Supabase klient
 import * as XLSX from 'xlsx'; // Excel parsing bibliotek
+import { withAdminAuth, createErrorResponse, createSuccessResponse } from '../../../../libs/server-auth'; // Authentication middleware
 
 export async function POST(request: NextRequest) {
   console.log('📤 RIO Upload API kaldt...');
   
-  try {
-    // Tjek authentication via Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // Fallback til cookie-baseret auth for browser requests
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.error('❌ Ingen gyldig session for upload');
-        return NextResponse.json({
-          success: false,
-          message: 'Ingen gyldig session',
-          error: 'UNAUTHORIZED'
-        }, { status: 401 });
-      }
-      console.log('✅ Session fundet for upload (cookie):', session.user?.email);
-    } else {
-      // Validér Bearer token
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-      if (userError || !user) {
-        console.error('❌ Ugyldig token for upload:', userError?.message);
-        return NextResponse.json({
-          success: false,
-          message: 'Ugyldig token',
-          error: 'UNAUTHORIZED'
-        }, { status: 401 });
-      }
-      console.log('✅ Token valideret for upload:', user.email);
-    }
+  // Brug authentication middleware
+  return withAdminAuth(request, async (request, user) => {
+    console.log('✅ Admin authentication bekræftet for:', user.email);
     
-    // Tjek admin status
-    const { isAdmin } = await import('../../../../libs/admin');
-    const adminStatus = await isAdmin();
-    if (!adminStatus) {
-      console.error('❌ Bruger er ikke admin');
-      return NextResponse.json({
-        success: false,
-        message: 'Kun administratorer kan uploade data',
-        error: 'FORBIDDEN'
-      }, { status: 403 });
-    }
+    try {
     
     // Parse multipart form data
     const formData = await request.formData();
@@ -69,20 +34,20 @@ export async function POST(request: NextRequest) {
     // Valider input
     if (!file) {
       console.error('❌ Ingen fil modtaget');
-      return NextResponse.json({
-        success: false,
-        message: 'Ingen fil modtaget',
-        error: 'NO_FILE'
-      }, { status: 400 });
+      return createErrorResponse(
+        'Ingen fil modtaget',
+        'NO_FILE',
+        400
+      );
     }
     
     if (!month || !year) {
       console.error('❌ Manglende måned eller år');
-      return NextResponse.json({
-        success: false,
-        message: 'Manglende måned eller år',
-        error: 'INVALID_PERIOD'
-      }, { status: 400 });
+      return createErrorResponse(
+        'Manglende måned eller år',
+        'INVALID_PERIOD',
+        400
+      );
     }
     
     // Tjek filtype
@@ -93,11 +58,11 @@ export async function POST(request: NextRequest) {
     
     if (!validTypes.includes(file.type)) {
       console.error('❌ Ugyldig filtype:', file.type);
-      return NextResponse.json({
-        success: false,
-        message: 'Kun Excel-filer (.xlsx, .xls) er tilladt',
-        error: 'INVALID_FILE_TYPE'
-      }, { status: 400 });
+      return createErrorResponse(
+        'Kun Excel-filer (.xlsx, .xls) er tilladt',
+        'INVALID_FILE_TYPE',
+        400
+      );
     }
     
     // Konverter fil til buffer
@@ -129,11 +94,11 @@ export async function POST(request: NextRequest) {
     const missingHeaders = requiredHeaders.filter(header => !headers.includes(header));
     if (missingHeaders.length > 0) {
       console.error('❌ Manglende headers:', missingHeaders);
-      return NextResponse.json({
-        success: false,
-        message: `Manglende kolonner: ${missingHeaders.join(', ')}`,
-        error: 'MISSING_HEADERS'
-      }, { status: 400 });
+      return createErrorResponse(
+        `Manglende kolonner: ${missingHeaders.join(', ')}`,
+        'MISSING_HEADERS',
+        400
+      );
     }
     
     // Map Excel kolonner til database felter
@@ -299,11 +264,11 @@ export async function POST(request: NextRequest) {
     
     if (recordsToInsert.length === 0) {
       console.error('❌ Ingen gyldige data fundet');
-      return NextResponse.json({
-        success: false,
-        message: 'Ingen gyldige chaufførdata fundet i filen',
-        error: 'NO_VALID_DATA'
-      }, { status: 400 });
+      return createErrorResponse(
+        'Ingen gyldige chaufførdata fundet i filen',
+        'NO_VALID_DATA',
+        400
+      );
     }
     
     // Indsæt data i database
@@ -314,31 +279,31 @@ export async function POST(request: NextRequest) {
     
     if (error) {
       console.error('❌ Database fejl:', error);
-      return NextResponse.json({
-        success: false,
-        message: 'Database fejl',
-        error: error.message
-      }, { status: 500 });
+      return createErrorResponse(
+        'Database fejl: ' + error.message,
+        'DATABASE_ERROR',
+        500
+      );
     }
     
     console.log('✅ Data indsættet succesfuldt:', recordsToInsert.length, 'records');
     
-    return NextResponse.json({
-      success: true,
-      message: `${recordsToInsert.length} chauffører behandlet for ${month}/${year}`,
-      data: {
+    return createSuccessResponse(
+      {
         recordsProcessed: recordsToInsert.length,
         month,
         year
-      }
-    });
+      },
+      `${recordsToInsert.length} chauffører behandlet for ${month}/${year}`
+    );
     
   } catch (error) {
     console.error('❌ Uventet fejl i upload API:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Der opstod en uventet fejl under behandling af filen',
-      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR'
-    }, { status: 500 });
+    return createErrorResponse(
+      'Der opstod en uventet fejl under behandling af filen',
+      'UNKNOWN_ERROR',
+      500
+    );
   }
+  });
 } 
