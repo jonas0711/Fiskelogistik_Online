@@ -17,7 +17,6 @@ import BreadcrumbNavigation from '@/components/BreadcrumbNavigation'; // Breadcr
 // DriverEmailModal fjernet - erstattet med dedikeret side // Email administration modal
 import { supabase } from '../../../libs/db'; // Vores Supabase klient
 import { isAdmin } from '../../../libs/admin'; // Admin funktioner
-import { toast } from 'sonner'; // Toast notifikationer
 import { 
   DriverIcon, 
   UserIcon, 
@@ -112,8 +111,8 @@ export default function RIODriversPage() {
       // Få session for authorization
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.error('❌ Ingen session tilgængelig for API kald');
-        toast.error('Du skal være logget ind for at se chauffør data');
+        console.log('ℹ️ Ingen session tilgængelig for API kald - redirecter til login');
+        router.push('/');
         return;
       }
       
@@ -146,11 +145,11 @@ export default function RIODriversPage() {
       setUniqueDrivers(data.drivers || []);
       setFilteredDrivers(data.drivers || []);
       
-    } catch (error) {
-      console.error('❌ Fejl ved hentning af unikke chauffører:', error);
-      toast.error('Kunne ikke hente chauffør data');
+    } catch {
+      console.log('ℹ️ Fejl ved hentning af unikke chauffører - redirecter til login');
+      router.push('/');
     }
-  }, [minKm, selectedMonth, selectedYear]);
+  }, [minKm, selectedMonth, selectedYear, router]);
 
   /**
    * Tjekker session og indlæser data ved komponent mount
@@ -163,7 +162,7 @@ export default function RIODriversPage() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError || !session) {
-          console.error('❌ Ingen gyldig session:', sessionError?.message);
+          console.log('ℹ️ Ingen gyldig session - redirecter til login');
           router.push('/');
           return;
         }
@@ -178,8 +177,8 @@ export default function RIODriversPage() {
         // Hent unikke chauffører
         await loadUniqueDrivers();
         
-      } catch (error) {
-        console.error('❌ Fejl under session tjek for chauffører:', error);
+      } catch {
+        console.log('ℹ️ Fejl under session tjek - redirecter til login');
         router.push('/');
       } finally {
         setIsLoading(false);
@@ -200,8 +199,8 @@ export default function RIODriversPage() {
       // Få session for authorization
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.error('❌ Ingen session tilgængelig for API kald');
-        toast.error('Du skal være logget ind for at se detaljeret data');
+        console.log('ℹ️ Ingen session tilgængelig for API kald - redirecter til login');
+        router.push('/');
         return;
       }
       
@@ -228,9 +227,9 @@ export default function RIODriversPage() {
       setDetailedData(data.records || []);
       setSelectedDriver(driverName);
       
-    } catch (error) {
-      console.error('❌ Fejl ved hentning af chauffør detaljer:', error);
-      toast.error('Kunne ikke hente detaljeret chauffør data');
+    } catch {
+      console.log('ℹ️ Fejl ved hentning af chauffør detaljer - redirecter til login');
+      router.push('/');
     } finally {
       setIsLoadingDetails(false);
     }

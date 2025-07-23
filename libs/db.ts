@@ -90,6 +90,11 @@ export async function getCurrentUser() {
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error) {
+      // Håndter specifikke auth fejl mere elegant
+      if (error.message === 'Auth session missing!') {
+        console.log(`${LOG_PREFIXES.info} Ingen aktiv session - bruger ikke logget ind`);
+        return null;
+      }
       console.error(`${LOG_PREFIXES.error} Fejl ved hentning af bruger:`, error.message);
       return null;
     }

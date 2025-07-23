@@ -1,0 +1,27 @@
+# 🔒 Robots.txt - Forbyder søgemaskineindeksering
+# 
+# Dette er en privat platform for Fiskelogistik Gruppen A/S
+# Alle sider er beskyttet og må ikke indekseres af søgemaskiner
+
+User-agent: *
+Disallow: /
+
+# Specifikt forbyder adgang til følsomme områder
+Disallow: /admin/
+Disallow: /api/
+Disallow: /rio/
+Disallow: /dashboard/
+Disallow: /setup-admin/
+Disallow: /test-admin/
+Disallow: /test-driver-emails/
+
+# Tillad kun offentlige assets
+Allow: /favicon.ico
+Allow: /_next/static/
+Allow: /_next/image/
+
+# Crawl-delay for at reducere serverbelastning
+Crawl-delay: 10
+
+# Sitemap (ikke tilgængelig)
+# Sitemap: https://fiskelogistikgruppen.vercel.app/sitemap.xml 

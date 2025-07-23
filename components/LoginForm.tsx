@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button'; // ShadCN button komponent
 import { Input } from '@/components/ui/input'; // ShadCN input komponent
 import { Label } from '@/components/ui/label'; // ShadCN label komponent
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // ShadCN card komponenter
-import { supabase } from '../libs/db'; // Vores Supabase klient
 import { isValidEmail } from '../libs/utils'; // Hjælpefunktion til email validering
 import Image from 'next/image'; // Next.js Image komponent til optimeret billede visning
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config'; // Log prefixes
@@ -130,27 +129,27 @@ export default function LoginForm() {
     setErrors({});
     
     try {
-      console.log(`${LOG_PREFIXES.auth} Forsøger at logge ind med Supabase...`);
+      console.log(`${LOG_PREFIXES.auth} Forsøger at logge ind via API...`);
       
-      // Kald Supabase signInWithPassword
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email.trim(),
-        password: formData.password,
+      // Kald vores login API i stedet for Supabase direkte
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email.trim(),
+          password: formData.password,
+        }),
       });
       
-      if (error) {
-        console.error(`${LOG_PREFIXES.error} Login fejl:`, error.message);
-        
-        // Håndter forskellige fejl typer
-        if (error.message.includes('Invalid login credentials')) {
-          setErrors({ general: 'Forkert email eller adgangskode' });
-        } else if (error.message.includes('Email not confirmed')) {
-          setErrors({ general: 'Email skal bekræftes før login' });
-        } else {
-          setErrors({ general: 'Der opstod en fejl under login. Prøv venligst igen.' });
-        }
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error(`${LOG_PREFIXES.error} Login API fejl:`, result.message);
+        setErrors({ general: result.message || 'Der opstod en fejl under login. Prøv venligst igen.' });
       } else {
-        console.log(`${LOG_PREFIXES.success} Login succesfuldt:`, data.user?.email);
+        console.log(`${LOG_PREFIXES.success} Login succesfuldt via API:`, result.data?.user?.email);
         
         // Ryd form data
         setFormData({ email: '', password: '' });
@@ -293,9 +292,9 @@ export default function LoginForm() {
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Sikker adgang - Kun autoriserede brugere
               </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                Kun whitelisted email adresser har adgang til systemet
-              </p>
+                             <p className="text-xs text-gray-400 dark:text-gray-500">
+                 Kun registrerede brugere har adgang til systemet
+               </p>
             </div>
           </div>
         </CardContent>

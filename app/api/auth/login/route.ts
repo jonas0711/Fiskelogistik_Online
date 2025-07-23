@@ -1,12 +1,11 @@
 /**
  * Login API Route
  * Håndterer bruger login via Supabase
- * Kun whitelisted emails kan logge ind
+ * Kun brugere der eksisterer i systemet kan logge ind
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../libs/db';
-import { securityConfig } from '../../../../libs/config';
 import { isValidEmail } from '../../../../libs/utils';
 
 // Interface for login request data
@@ -61,21 +60,21 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Tjek om email er whitelisted
-    const isWhitelisted = checkWhitelistedEmail(body.email);
-    if (!isWhitelisted) {
-      console.error('❌ Email ikke whitelisted:', body.email);
+    // Tjek om bruger eksisterer i systemet
+    const userExists = await checkUserExists(body.email);
+    if (!userExists) {
+      console.error('❌ Bruger eksisterer ikke i systemet:', body.email);
       return NextResponse.json(
         {
           success: false,
           message: 'Adgang nægtet',
-          error: 'Denne email adresse er ikke autoriseret til at logge ind',
+          error: 'Denne email adresse er ikke registreret i systemet',
         } as ApiResponse,
         { status: 403 }
       );
     }
     
-    console.log('✅ Email valideret og whitelisted, forsøger login...');
+    console.log('✅ Bruger eksisterer i systemet, forsøger login...');
     
     // Forsøg login med Supabase
     const { data, error } = await supabaseAdmin.auth.signInWithPassword({
@@ -108,8 +107,8 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Login succesfuldt for:', data.user?.email);
     
-    // Returner succes response
-    return NextResponse.json(
+    // Opret response med session data
+    const response = NextResponse.json(
       {
         success: true,
         message: 'Login succesfuldt',
@@ -128,6 +127,35 @@ export async function POST(request: NextRequest) {
       } as ApiResponse,
       { status: 200 }
     );
+    
+    // Sæt session cookies så middleware kan læse dem
+    if (data.session?.access_token) {
+      console.log('🍪 Sætter session cookies...');
+      
+      // Sæt access token cookie
+      response.cookies.set('sb-access-token', data.session.access_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7, // 7 dage
+        path: '/',
+      });
+      
+      // Sæt refresh token cookie hvis det findes
+      if (data.session.refresh_token) {
+        response.cookies.set('sb-refresh-token', data.session.refresh_token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24 * 30, // 30 dage
+          path: '/',
+        });
+      }
+      
+      console.log('✅ Session cookies sat succesfuldt');
+    }
+    
+    return response;
     
   } catch (error) {
     console.error('❌ Uventet fejl i login API:', error);
@@ -174,26 +202,40 @@ function validateLoginRequest(data: LoginRequest): { isValid: boolean; errors: s
 }
 
 /**
- * Tjekker om email er whitelisted
+ * Tjekker om bruger eksisterer i Supabase systemet
  * @param email - Email at tjekke
- * @returns true hvis whitelisted, false ellers
+ * @returns Promise<boolean> - true hvis bruger eksisterer
  */
-function checkWhitelistedEmail(email: string): boolean {
-  console.log('🔒 Tjekker whitelisted email:', email);
+async function checkUserExists(email: string): Promise<boolean> {
+  console.log('🔒 Tjekker om bruger eksisterer i systemet:', email);
   
-  const whitelistedEmails = securityConfig.whitelistedEmails;
-  
-  if (whitelistedEmails.length === 0) {
-    console.warn('⚠️ Ingen whitelisted emails konfigureret');
+  try {
+    // Hent alle brugere fra Supabase Auth
+    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    
+    if (error) {
+      console.error('❌ Fejl ved bruger liste hentning:', error.message);
+      return false; // Antag at bruger ikke eksisterer ved fejl
+    }
+    
+    // Tjek om email findes i brugerlisten
+    const existingUser = users.find(user => 
+      user.email?.toLowerCase() === email.toLowerCase()
+    );
+    
+    const exists = !!existingUser;
+    console.log(`✅ Bruger eksistens tjek: ${exists ? 'Eksisterer' : 'Eksisterer ikke'}`);
+    
+    if (exists) {
+      console.log(`📋 Bruger detaljer: ID=${existingUser.id}, Email=${existingUser.email}, Rolle=${existingUser.user_metadata?.role || 'user'}`);
+    }
+    
+    return exists;
+    
+  } catch (error) {
+    console.error('❌ Uventet fejl ved bruger eksistens tjek:', error);
     return false;
   }
-  
-  const isWhitelisted = whitelistedEmails.some(
-    (whitelistedEmail: string) => whitelistedEmail.toLowerCase() === email.toLowerCase()
-  );
-  
-  console.log(`✅ Whitelist tjek: ${isWhitelisted ? 'Autoriseret' : 'Ikke autoriseret'}`);
-  return isWhitelisted;
 }
 
 // Funktioner er ikke eksporteret for at undgå Next.js konflikter 

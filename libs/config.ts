@@ -29,10 +29,9 @@ export const appConfig = {
 
 // Sikkerhedskonfiguration
 export const securityConfig = {
-  // Whitelisted email adresser (komma-separeret)
-  whitelistedEmails: process.env.WHITELISTED_EMAILS?.split(',') || [],
   // Session timeout i sekunder (24 timer)
   sessionTimeout: 24 * 60 * 60,
+  // Noter: Whitelist tjek er nu dynamisk baseret på om brugeren eksisterer i Supabase
 };
 
 // Database konfiguration
@@ -69,14 +68,8 @@ export function validateConfig() {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY er påkrævet');
   }
   
-  // Tjek om der er whitelisted emails
-  if (securityConfig.whitelistedEmails.length === 0) {
-    console.warn(`${LOG_PREFIXES.warning} Ingen whitelisted emails fundet`);
-  } else {
-    console.log(`${LOG_PREFIXES.success} ${securityConfig.whitelistedEmails.length} whitelisted emails fundet`);
-  }
-  
   console.log(`${LOG_PREFIXES.success} Konfiguration valideret succesfuldt`);
+  console.log(`${LOG_PREFIXES.info} Login tjekker nu om brugeren eksisterer i Supabase i stedet for statisk whitelist`);
 }
 
 // Eksporter alle konfigurationer

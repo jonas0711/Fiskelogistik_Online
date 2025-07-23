@@ -11,11 +11,30 @@ import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 /**
  * GET /api/admin/debug
  * Debug endpoint
+ * KRITISK: Kun admins kan tilgå debug information
  */
 export async function GET(request: NextRequest) {
   console.log(`${LOG_PREFIXES.debug} Admin API: Debug endpoint kaldt`);
   
   try {
+    // 🔐 KRITISK: Valider admin authentication
+    const authHeader = request.headers.get('authorization');
+    const adminUser = await validateAdminToken(authHeader);
+    
+    if (!adminUser) {
+      console.error(`${LOG_PREFIXES.error} KRITISK: Uautoriseret forsøg på at tilgå debug endpoint`);
+      return NextResponse.json(
+        { 
+          success: false,
+          message: 'Adgang nægtet',
+          error: 'Kun administratorer kan tilgå debug information'
+        },
+        { status: 403 }
+      );
+    }
+    
+    console.log(`${LOG_PREFIXES.success} Admin authentication bekræftet for:`, adminUser.email);
+    
     // Tjek om Supabase admin klient er tilgængelig
     const supabaseStatus = {
       hasSupabaseAdmin: !!supabaseAdmin,
@@ -43,6 +62,7 @@ export async function GET(request: NextRequest) {
       success: true,
       message: 'Debug information',
       timestamp: new Date().toISOString(),
+      adminUser: adminUser.email,
       supabaseStatus,
       dbStatus,
       requestHeaders: Object.fromEntries(request.headers.entries()),
@@ -53,6 +73,8 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json(
       { 
+        success: false,
+        message: 'Server fejl',
         error: 'Debug endpoint fejlede',
         details: error instanceof Error ? error.message : 'Ukendt fejl',
         timestamp: new Date().toISOString()

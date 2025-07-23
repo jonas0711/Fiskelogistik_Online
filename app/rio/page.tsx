@@ -40,22 +40,20 @@ export default function RIOHomePage() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError || !session) {
-          console.error(`${LOG_PREFIXES.error} Ingen gyldig session:`, sessionError?.message);
+          console.log(`${LOG_PREFIXES.info} Ingen gyldig session - redirecter til login`);
           router.push('/');
           return;
         }
         
         console.log(`${LOG_PREFIXES.success} Session fundet for RIO:`, session.user?.email);
         
-
-        
         // Tjek om bruger er admin
         const adminStatus = await isAdmin();
         setIsUserAdmin(adminStatus);
         console.log(`${LOG_PREFIXES.user} Admin status for RIO:`, adminStatus);
         
-      } catch (error) {
-        console.error(`${LOG_PREFIXES.error} Fejl under hentning af bruger data for RIO:`, error);
+      } catch {
+        console.log(`${LOG_PREFIXES.info} Fejl under hentning af bruger data - redirecter til login`);
         router.push('/');
       } finally {
         setIsLoading(false);
