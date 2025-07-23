@@ -2,6 +2,7 @@
  * Login API Route
  * Håndterer bruger login via Supabase
  * Kun brugere der eksisterer i systemet kan logge ind
+ * LØSNING: Server-side redirect for at undgå cookie timing race condition
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,29 +15,17 @@ interface LoginRequest {
   password: string;
 }
 
-// Interface for API response
+// Interface for API response (kun brugt ved fejl)
 interface ApiResponse {
   success: boolean;
   message: string;
-  data?: {
-    user?: {
-      id?: string;
-      email?: string;
-      role?: string;
-    };
-    session?: {
-      access_token?: string;
-      refresh_token?: string;
-      expires_at?: number;
-    };
-  };
   error?: string;
 }
 
 /**
  * POST handler for login
  * @param request - Next.js request objekt
- * @returns NextResponse med login resultat
+ * @returns NextResponse med login resultat eller redirect
  */
 export async function POST(request: NextRequest) {
   console.log('🔐 Login API kaldt...');
@@ -107,30 +96,14 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Login succesfuldt for:', data.user?.email);
     
-    // Opret response med session data
-    const response = NextResponse.json(
-      {
-        success: true,
-        message: 'Login succesfuldt',
-        data: {
-          user: {
-            id: data.user?.id,
-            email: data.user?.email,
-            role: data.user?.user_metadata?.role || 'user',
-          },
-          session: {
-            access_token: data.session?.access_token,
-            refresh_token: data.session?.refresh_token,
-            expires_at: data.session?.expires_at,
-          },
-        },
-      } as ApiResponse,
-      { status: 200 }
-    );
+    // LØSNING: Opret server-side redirect response i stedet for JSON
+    // Dette sikrer at cookies og redirect sker i samme HTTP transaction
+    const redirectUrl = new URL('/rio', request.url);
+    const response = NextResponse.redirect(redirectUrl, 302);
     
-    // Sæt session cookies så middleware kan læse dem
+    // Sæt session cookies på redirect response
     if (data.session?.access_token) {
-      console.log('🍪 Sætter session cookies...');
+      console.log('🍪 Sætter session cookies på redirect response...');
       
       // Sæt access token cookie
       response.cookies.set('sb-access-token', data.session.access_token, {
@@ -152,9 +125,10 @@ export async function POST(request: NextRequest) {
         });
       }
       
-      console.log('✅ Session cookies sat succesfuldt');
+      console.log('✅ Session cookies sat på redirect response');
     }
     
+    console.log('🔄 Returnerer server-side redirect til /rio');
     return response;
     
   } catch (error) {

@@ -3,6 +3,7 @@
  * Håndterer bruger login med email og password
  * Kun whitelisted emails kan logge ind
  * FSK (Fiskelogistikgruppen) branded design
+ * LØSNING: Server-side redirect for at undgå cookie timing race condition
  */
 
 'use client'; // Dette gør komponenten til en client-side komponent
@@ -44,7 +45,7 @@ export default function LoginForm() {
   // State til loading status
   const [isLoading, setIsLoading] = useState(false);
   
-  // Fjernet success message state - omdirigerer straks i stedet
+  // Fjernet success message state - server-side redirect håndterer navigation
   
   /**
    * Håndterer ændringer i input felterne
@@ -141,20 +142,37 @@ export default function LoginForm() {
           email: formData.email.trim(),
           password: formData.password,
         }),
+        // VIGTIGT: Lad browseren følge redirect automatisk
+        redirect: 'follow',
       });
       
+      // LØSNING: Tjek om response er en redirect
+      if (response.redirected) {
+        console.log(`${LOG_PREFIXES.success} Server-side redirect modtaget til:`, response.url);
+        
+        // Ryd form data
+        setFormData({ email: '', password: '' });
+        
+        // Lad browseren følge redirect automatisk
+        // Dette sikrer at cookies og redirect sker i samme HTTP transaction
+        window.location.href = response.url;
+        return;
+      }
+      
+      // Hvis ikke redirect, så er det en fejl - parse JSON response
       const result = await response.json();
       
       if (!response.ok) {
         console.error(`${LOG_PREFIXES.error} Login API fejl:`, result.message);
         setErrors({ general: result.message || 'Der opstod en fejl under login. Prøv venligst igen.' });
       } else {
+        // Dette burde ikke ske længere da vi nu bruger redirect ved success
         console.log(`${LOG_PREFIXES.success} Login succesfuldt via API:`, result.data?.user?.email);
         
         // Ryd form data
         setFormData({ email: '', password: '' });
         
-        // Omdiriger straks til RIO programmet
+        // Fallback redirect hvis der stadig er JSON response
         window.location.href = '/rio';
       }
     } catch (error) {
@@ -267,7 +285,7 @@ export default function LoginForm() {
               </div>
             )}
             
-            {/* Fjernet success besked - omdirigerer straks i stedet */}
+            {/* Fjernet success besked - server-side redirect håndterer navigation */}
             
             {/* Submit knap */}
             <Button

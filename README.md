@@ -64,6 +64,13 @@ SUPABASE_SERVICE_ROLE_KEY=din_service_role_key
 - Row Level Security (RLS) aktivt på alle tabeller
 - Alle API keys gemt i miljøvariabler
 - Ingen hard-delete, bruger `deleted_at` timestamp
+- Server-side redirect for login (løser cookie timing race condition)
+
+## Nylige Fixes
+- **Login Loop Fix**: Løst cookie timing race condition med server-side redirect
+  - Se `LOGIN_LOOP_FIX.md` for detaljeret dokumentation
+  - Implementeret server-side redirect i stedet for client-side
+  - Eliminerer timing problemer mellem login API og middleware
 
 ## Database Regler
 - Snake_case navngivning
