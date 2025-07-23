@@ -165,16 +165,21 @@ export default function DataUploadForm() {
       }, 200);
       
       // Send til API
+      console.log(`${LOG_PREFIXES.info} Sender request til /api/rio/upload...`);
       const response = await fetch('/api/rio/upload', {
         method: 'POST',
         body: formData
       });
       
+      console.log(`${LOG_PREFIXES.info} Response status:`, response.status, response.statusText);
+      
       clearInterval(progressInterval);
       
       if (!response.ok) {
+        console.error(`${LOG_PREFIXES.error} Upload fejlede med status:`, response.status);
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload fejlede');
+        console.error(`${LOG_PREFIXES.error} Error data:`, errorData);
+        throw new Error(errorData.error || `Upload fejlede (${response.status})`);
       }
       
       const result = await response.json();

@@ -12,19 +12,34 @@ export async function POST(request: NextRequest) {
   console.log('📤 RIO Upload API kaldt...');
   
   try {
-    // Tjek bruger session direkte med Supabase klient
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError || !session) {
-      console.error('❌ Ingen gyldig session for upload');
-      return NextResponse.json({
-        success: false,
-        message: 'Ingen gyldig session',
-        error: 'UNAUTHORIZED'
-      }, { status: 401 });
+    // Tjek authentication via Authorization header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      // Fallback til cookie-baseret auth for browser requests
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('❌ Ingen gyldig session for upload');
+        return NextResponse.json({
+          success: false,
+          message: 'Ingen gyldig session',
+          error: 'UNAUTHORIZED'
+        }, { status: 401 });
+      }
+      console.log('✅ Session fundet for upload (cookie):', session.user?.email);
+    } else {
+      // Validér Bearer token
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !user) {
+        console.error('❌ Ugyldig token for upload:', userError?.message);
+        return NextResponse.json({
+          success: false,
+          message: 'Ugyldig token',
+          error: 'UNAUTHORIZED'
+        }, { status: 401 });
+      }
+      console.log('✅ Token valideret for upload:', user.email);
     }
-    
-    console.log('✅ Session fundet for upload:', session.user?.email);
     
     // Tjek admin status
     const { isAdmin } = await import('../../../../libs/admin');
