@@ -18,6 +18,7 @@
     "@supabase/supabase-js": "^2.52.0",
     "@types/nodemailer": "^6.4.17",
     "@vercel/og": "^0.8.2",
+    "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "chartjs-plugin-annotation": "^3.1.0",
     "class-variance-authority": "^0.7.1",

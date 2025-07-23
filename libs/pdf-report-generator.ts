@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DriverData, CalculatedMetrics, calculateMetrics, calculateOverallRanking } from './report-utils';
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
+import { PuppeteerService } from './puppeteer-service';
 
 // Interface for PDF rapport konfiguration - identisk med Word
 export interface PDFReportConfig {
@@ -1039,11 +1040,23 @@ export class PDFReportGenerator {
    */
   public async generateReport(): Promise<Buffer> {
     console.log(`${LOG_PREFIXES.form} Starter PDF rapport generering for ${this.config.reportType} rapport...`);
-    
+    // Generer HTML indhold
+    const html = this.generateHTML();
+    // Tjek om vi skal bruge ekstern service eller lokal Puppeteer
+    const strategy = process.env.PDF_GENERATION_STRATEGY;
+    if (strategy === 'service') {
+      try {
+        console.log(`${LOG_PREFIXES.info} PDF_GENERATION_STRATEGY='service' - forsøger ekstern PDF-generering...`);
+        const pdfBuffer = await PuppeteerService.generatePDF(html);
+        console.log(`${LOG_PREFIXES.success} PDF genereret via ekstern service.`);
+        return pdfBuffer;
+      } catch (serviceError) {
+        console.error(`${LOG_PREFIXES.error} Ekstern PDF-generering fejlede, forsøger lokal fallback...`, serviceError);
+        // Fallback til lokal Puppeteer
+      }
+    }
+    // Lokal Puppeteer fallback eller default
     try {
-      // Generer HTML indhold
-      const html = this.generateHTML();
-      
       // Opret browser instance til PDF konvertering med forbedret kvalitet
       const browser = await puppeteer.launch({
         headless: true,
@@ -1055,22 +1068,18 @@ export class PDFReportGenerator {
           '--disable-features=VizDisplayCompositor'
         ]
       });
-
       const page = await browser.newPage();
-      
       // Fixed viewport for at undgå sorte striber
       await page.setViewport({ 
         width: 794,  // A4 bredde i pixels (210mm ved 96 DPI)
         height: 1123, // A4 højde i pixels (297mm ved 96 DPI)
         deviceScaleFactor: 2 // Højere DPI for skarpere tekst
       });
-
       // Indlæs HTML med forbedret encoding
       await page.setContent(html, { 
         waitUntil: 'networkidle0',
         timeout: 30000 
       });
-
       // Generer PDF med optimerede indstillinger for at undgå sorte striber
       const pdfBuffer = await page.pdf({
         format: 'A4',
@@ -1088,14 +1097,11 @@ export class PDFReportGenerator {
         width: '210mm',
         height: '297mm'
       }) as Buffer;
-      
       await browser.close();
-      
-      console.log(`${LOG_PREFIXES.success} PDF rapport genereret succesfuldt - ${pdfBuffer.length} bytes`);
+      console.log(`${LOG_PREFIXES.success} PDF rapport genereret succesfuldt via lokal Puppeteer - ${pdfBuffer.length} bytes`);
       return pdfBuffer;
-      
     } catch (error) {
-      console.error(`${LOG_PREFIXES.error} Fejl ved PDF generering:`, error);
+      console.error(`${LOG_PREFIXES.error} Fejl ved lokal PDF generering:`, error);
       throw new Error(`PDF generering fejlede: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
     }
   }

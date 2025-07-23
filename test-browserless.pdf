@@ -1,0 +1,1 @@
+This URL is a legacy endpoint, please use https://production-sfo.browserless.io for REST API calls and wss://production-sfo.browserless.io for library and puppeteer usage. See more at https://docs.browserless.io/overview/connection-urlss

@@ -288,14 +288,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
         error?: string;
       }>
     };
-    
+
     console.log(`${LOG_PREFIXES.form} Starter mail sending til ${driversToSendMails.length} chauffører...`);
-    
-    for (const driver of driversToSendMails) {
+
+    // Funktion til at sende mail for én chauffør (udtrukket for chunking)
+    async function sendMailForDriver(driver: DriverData) {
       try {
         console.log(`${LOG_PREFIXES.info} Behandler ${driver.driver_name}...`);
-        
-        // Tjek om chauffør har email adresse
         const driverEmail = emailMap.get(driver.driver_name);
         if (!driverEmail) {
           console.log(`${LOG_PREFIXES.warning} Ingen email fundet for ${driver.driver_name}`);
@@ -306,33 +305,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
             status: 'failed',
             error: 'Ingen email adresse fundet'
           });
-          continue;
+          return;
         }
-        
-        // Beregn chauffør metrics - identisk med Python beregninger
         const metrics = calculateMetrics(driver);
-        
-                 // Opret rapport data struktur
-         const reportData: ReportEmailData = {
-           statistik: {
-             name: driver.driver_name,
-             date: periodText,
-             total_distance: driver.driving_distance || 0,
-             // Kritiske nøgletal - identisk med Python beregninger
-             tomgangsprocent: metrics.Tomgangsprocent,
-             fartpilot_andel: metrics['Fartpilot Andel'],
-             motorbremse_andel: metrics['Motorbremse Andel'],
-             paalobsdrift_andel: metrics['Påløbsdrift Andel']
-           }
-         };
-        
-        // Generer PDF rapport som vedhæftning
-        console.log(`${LOG_PREFIXES.form} Genererer PDF rapport for ${driver.driver_name}...`);
-        
+        const reportData: ReportEmailData = {
+          statistik: {
+            name: driver.driver_name,
+            date: periodText,
+            total_distance: driver.driving_distance || 0,
+            tomgangsprocent: metrics.Tomgangsprocent,
+            fartpilot_andel: metrics['Fartpilot Andel'],
+            motorbremse_andel: metrics['Motorbremse Andel'],
+            paalobsdrift_andel: metrics['Påløbsdrift Andel']
+          }
+        };
         try {
-          // Find tidligere data for denne specifikke chauffør
           const previousDriverData = previousDriversData.find(pd => pd.driver_name === driver.driver_name);
-          
           console.log(`${LOG_PREFIXES.info} PDF generering for ${driver.driver_name}:`, {
             hasPreviousData: !!previousDriverData,
             previousMonth: previousDriverData?.month,
@@ -340,42 +328,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
             currentMonth: driver.month,
             currentYear: driver.year
           });
-          
           const pdfGenerator = new PDFReportGenerator({
             reportType: 'individuel',
             month,
             year,
             selectedDriver: driver.driver_name,
             period: periodText,
-            totalDrivers: qualifiedDrivers.length, // Alle chauffører for rangeringer
-            drivers: qualifiedDrivers, // Alle chauffører for rangeringer
-            previousDrivers: previousDriversData, // Alle tidligere data
+            totalDrivers: qualifiedDrivers.length,
+            drivers: qualifiedDrivers,
+            previousDrivers: previousDriversData,
             overallRanking,
             generatedAt: new Date().toISOString()
           });
-          
           const pdfBuffer = await pdfGenerator.generateReport();
           reportData.rapport = pdfBuffer;
-          
           console.log(`${LOG_PREFIXES.success} PDF genereret for ${driver.driver_name}: ${pdfBuffer.length} bytes`);
-          
         } catch (pdfError) {
           console.error(`${LOG_PREFIXES.error} PDF generering fejlede for ${driver.driver_name}:`, pdfError);
-          // Fortsæt uden PDF vedhæftning
         }
-        
-                 // Bestem modtager email (test mode eller normal)
-         const recipientEmail = testMode ? undefined : driverEmail; // undefined = brug test_email fra config
-        
-        // Send rapport email
+        const recipientEmail = testMode ? undefined : driverEmail;
         console.log(`${LOG_PREFIXES.form} Sender rapport email til ${driverEmail} for ${driver.driver_name}...`);
-        
         const sendSuccess = await mailService.sendReport(
           driver.driver_name,
           reportData,
           recipientEmail
         );
-        
         if (sendSuccess) {
           console.log(`${LOG_PREFIXES.success} Rapport sendt succesfuldt til ${driver.driver_name} (${driverEmail})`);
           results.sent++;
@@ -394,13 +371,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
             error: 'Mail sending fejlede'
           });
         }
-        
-        // Rate limiting - pause mellem mails for at undgå SMTP rate limits
-        if (mode === 'bulk' && qualifiedDrivers.indexOf(driver) < qualifiedDrivers.length - 1) {
-          console.log(`${LOG_PREFIXES.info} Venter 2 sekunder før næste mail (rate limiting)...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        
       } catch (error) {
         console.error(`${LOG_PREFIXES.error} Fejl ved behandling af ${driver.driver_name}:`, error);
         results.failed++;
@@ -412,7 +382,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
         });
       }
     }
-    
+
+    if (mode === 'bulk') {
+      // Chunking: del chauffører op i chunks af 5
+      const chunks = splitIntoChunks(driversToSendMails, 5);
+      for (let i = 0; i < chunks.length; i++) {
+        console.log(`${LOG_PREFIXES.info} Starter chunk ${i + 1}/${chunks.length} (chauffører: ${chunks[i].map(d => d.driver_name).join(', ')})`);
+        await Promise.all(chunks[i].map(driver => sendMailForDriver(driver)));
+        console.log(`${LOG_PREFIXES.success} Chunk ${i + 1}/${chunks.length} færdig.`);
+        if (i < chunks.length - 1) {
+          console.log(`${LOG_PREFIXES.info} Venter 2 sekunder før næste chunk...`);
+          await sleep(2000);
+        }
+      }
+    } else {
+      // Individual: sekventiel for-loop
+      for (const driver of driversToSendMails) {
+        await sendMailForDriver(driver);
+      }
+    }
+
     console.log(`${LOG_PREFIXES.success} Mail sending afsluttet - Sent: ${results.sent}, Fejlede: ${results.failed}`);
     
     const successMessage = mode === 'individual' 
@@ -435,4 +424,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
       { status: 500 }
     );
   }
+} 
+
+// Hjælpefunktion til at splitte array i chunks
+function splitIntoChunks<T>(array: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+// Hjælpefunktion til at vente
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 } 
