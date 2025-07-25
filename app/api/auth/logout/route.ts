@@ -1,16 +1,58 @@
 /**
  * Logout API Route
  * Rydder session cookies og logger brugeren ud
+ * LØSNING: Bruger Supabase SSR-pakke for konsistent cookie-håndtering
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../libs/db';
+import { createServerClient } from '@supabase/ssr';
 
 // Interface for API response
 interface ApiResponse {
   success: boolean;
   message: string;
   error?: string;
+}
+
+/**
+ * Opretter Supabase server client med SSR cookie-håndtering
+ * @param request - Next.js request objekt
+ * @param response - Next.js response objekt
+ * @returns Supabase client
+ */
+function createSupabaseClient(request: NextRequest, response: NextResponse) {
+  console.log('🔧 Opretter Supabase server client med SSR for logout...');
+  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  
+  // Opret Supabase client med SSR cookie-håndtering
+  const supabase = createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        // Læs cookies fra request
+        get(name: string) {
+          console.log(`🍪 Læser cookie: ${name}`);
+          return request.cookies.get(name)?.value;
+        },
+        // Sæt cookies på response
+        set(name: string, value: string, options: any) {
+          console.log(`🍪 Sætter cookie: ${name}`);
+          response.cookies.set(name, value, options);
+        },
+        // Fjern cookies fra response
+        remove(name: string, options: any) {
+          console.log(`🍪 Fjerner cookie: ${name}`);
+          response.cookies.set(name, '', { ...options, maxAge: 0 });
+        },
+      },
+    }
+  );
+  
+  console.log('✅ Supabase server client oprettet med SSR cookie-håndtering');
+  return supabase;
 }
 
 /**
@@ -22,23 +64,7 @@ export async function POST(request: NextRequest) {
   console.log('🚪 Logout API kaldt...');
   
   try {
-    // Hent access token fra cookie
-    const accessToken = request.cookies.get('sb-access-token')?.value;
-    
-    if (accessToken) {
-      console.log('🔐 Logger bruger ud via Supabase...');
-      
-      // Log ud via Supabase (valgfrit - rydder server-side session)
-      const { error } = await supabaseAdmin.auth.admin.signOut(accessToken);
-      
-      if (error) {
-        console.warn('⚠️ Supabase logout fejl (ikke kritisk):', error.message);
-      } else {
-        console.log('✅ Supabase logout succesfuldt');
-      }
-    }
-    
-    // Opret response
+    // Opret response objekt for cookie-håndtering
     const response = NextResponse.json(
       {
         success: true,
@@ -47,26 +73,21 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
     
-    // Ryd session cookies
-    console.log('🍪 Rydder session cookies...');
+    // Opret Supabase client med SSR cookie-håndtering
+    const supabase = createSupabaseClient(request, response);
     
-    response.cookies.set('sb-access-token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 0, // Slet cookie
-      path: '/',
-    });
+    // Log ud via Supabase SSR client (rydder automatisk cookies)
+    console.log('🔐 Logger bruger ud via Supabase SSR...');
+    const { error } = await supabase.auth.signOut();
     
-    response.cookies.set('sb-refresh-token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 0, // Slet cookie
-      path: '/',
-    });
+    if (error) {
+      console.warn('⚠️ Supabase logout fejl (ikke kritisk):', error.message);
+    } else {
+      console.log('✅ Supabase SSR logout succesfuldt');
+    }
     
-    console.log('✅ Session cookies ryddet succesfuldt');
+    // Supabase SSR client har automatisk ryddet cookies
+    console.log('✅ Session cookies ryddet via SSR client');
     
     return response;
     

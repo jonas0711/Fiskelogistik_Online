@@ -2,13 +2,13 @@
  * Login API Route
  * Håndterer bruger login via Supabase
  * Kun brugere der eksisterer i systemet kan logge ind
- * LØSNING: Vercel-specifik cookie håndtering og forbedret redirect logic
+ * LØSNING: Bruger Supabase SSR-pakke for konsistent cookie-håndtering
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 import { supabaseAdmin } from '../../../../libs/db';
 import { isValidEmail } from '../../../../libs/utils';
-import { getCookieConfig } from '../../../../libs/config';
 
 // Interface for login request data
 interface LoginRequest {
@@ -23,16 +23,45 @@ interface ApiResponse {
   error?: string;
 }
 
-
-
 /**
- * Opretter optimale cookie options baseret på environment
+ * Opretter Supabase server client med SSR cookie-håndtering
  * @param request - Next.js request objekt
- * @returns Cookie options objekt
+ * @param response - Next.js response objekt
+ * @returns Supabase client
  */
-function getCookieOptions(request: NextRequest) {
-  // Brug central config funktion
-  return getCookieConfig(request);
+function createSupabaseClient(request: NextRequest, response: NextResponse) {
+  console.log('🔧 Opretter Supabase server client med SSR for login...');
+  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  
+  // Opret Supabase client med SSR cookie-håndtering
+  const supabase = createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        // Læs cookies fra request
+        get(name: string) {
+          console.log(`🍪 Læser cookie: ${name}`);
+          return request.cookies.get(name)?.value;
+        },
+        // Sæt cookies på response
+        set(name: string, value: string, options: any) {
+          console.log(`🍪 Sætter cookie: ${name}`);
+          response.cookies.set(name, value, options);
+        },
+        // Fjern cookies fra response
+        remove(name: string, options: any) {
+          console.log(`🍪 Fjerner cookie: ${name}`);
+          response.cookies.set(name, '', { ...options, maxAge: 0 });
+        },
+      },
+    }
+  );
+  
+  console.log('✅ Supabase server client oprettet med SSR cookie-håndtering');
+  return supabase;
 }
 
 /**
@@ -84,8 +113,14 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Bruger eksisterer i systemet, forsøger login...');
     
-    // Forsøg login med Supabase
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    // Opret response objekt for cookie-håndtering
+    const response = NextResponse.next();
+    
+    // Opret Supabase client med SSR cookie-håndtering
+    const supabase = createSupabaseClient(request, response);
+    
+    // Forsøg login med Supabase SSR client
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: body.email.trim(),
       password: body.password,
     });
@@ -115,38 +150,31 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Login succesfuldt for:', data.user?.email);
     
-    // LØSNING: Opret server-side redirect response med optimerede cookies
+    // LØSNING: Opret server-side redirect response
+    // Supabase SSR client har automatisk håndteret cookie-sætning
     const redirectUrl = new URL('/rio', request.url);
-    const response = NextResponse.redirect(redirectUrl, 302);
+    const redirectResponse = NextResponse.redirect(redirectUrl, 302);
     
-    // Sæt session cookies på redirect response med Vercel-optimerede settings
-    if (data.session?.access_token) {
-      console.log('🍪 Sætter session cookies på redirect response...');
-      
-      const cookieOptions = getCookieOptions(request);
-      console.log('🍪 Cookie options:', cookieOptions);
-      
-      // Sæt access token cookie
-      response.cookies.set('sb-access-token', data.session.access_token, cookieOptions);
-      
-      // Sæt refresh token cookie hvis det findes
-      if (data.session.refresh_token) {
-        response.cookies.set('sb-refresh-token', data.session.refresh_token, {
-          ...cookieOptions,
-          maxAge: 60 * 60 * 24 * 30, // 30 dage for refresh token
-        });
-      }
-      
-      // Tilføj debug headers for at trace cookie flow
-      response.headers.set('X-Login-Success', 'true');
-      response.headers.set('X-User-Email', data.user?.email || '');
-      response.headers.set('X-Cookie-Domain', request.headers.get('host') || '');
-      
-      console.log('✅ Session cookies sat på redirect response med Vercel-optimerede settings');
-    }
+    // Kopier cookies fra Supabase SSR response til redirect response
+    response.cookies.getAll().forEach(cookie => {
+      console.log(`🍪 Kopierer cookie til redirect: ${cookie.name}`);
+      redirectResponse.cookies.set(cookie.name, cookie.value, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: cookie.name.includes('refresh') ? 60 * 60 * 24 * 30 : 60 * 60 * 24 * 7,
+      });
+    });
     
+    // Tilføj debug headers for at trace cookie flow
+    redirectResponse.headers.set('X-Login-Success', 'true');
+    redirectResponse.headers.set('X-User-Email', data.user?.email || '');
+    redirectResponse.headers.set('X-Cookie-Domain', request.headers.get('host') || '');
+    
+    console.log('✅ Login redirect response oprettet med SSR cookies');
     console.log('🔄 Returnerer server-side redirect til /rio');
-    return response;
+    return redirectResponse;
     
   } catch (error) {
     console.error('❌ Uventet fejl i login API:', error);

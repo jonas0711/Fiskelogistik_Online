@@ -4,52 +4,16 @@
  * Dette er FØRSTE forsvarslinje der kører på CDN-edge niveau
  * og afviser uautoriserede anmodninger før de når applikationen.
  * 
- * Formål:
- * - Beskyt alle ruter undtagen login og offentlige assets
- * - Valider authentication på edge-niveau for hurtig responstid
- * - Reducer serverbelastning ved at blokere ugyldige requests tidligt
- * - Centraliseret adgangskontrol for hele applikationen
- * LØSNING: Vercel Edge Runtime optimeret cookie håndtering
+ * LØSNING: Bruger Supabase SSR-pakke for korrekt cookie-håndtering
+ * og eliminerer login-loop problemet på Vercel deployment.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 
-// Supabase klient til edge-niveau authentication
+// Supabase konfiguration
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Opret Supabase klient med service role key for edge-niveau validering
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
-/**
- * Detekterer om vi kører på Vercel Edge Runtime
- * @param request - Next.js request objekt
- * @returns boolean - true hvis på Vercel
- */
-function isVercelEnvironment(request: NextRequest): boolean {
-  const host = request.headers.get('host') || '';
-  const vercelId = request.headers.get('x-vercel-id');
-  const userAgent = request.headers.get('user-agent') || '';
-  
-  const isVercelDomain = host.includes('vercel.app') || host.includes('vercel.com');
-  const hasVercelHeaders = vercelId !== null;
-  
-  console.log('🔍 Middleware environment detection:', {
-    host,
-    isVercelDomain,
-    hasVercelHeaders,
-    vercelId: vercelId?.substring(0, 10) + '...',
-    userAgent: userAgent.substring(0, 30) + '...'
-  });
-  
-  return isVercelDomain || hasVercelHeaders;
-}
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
  * Ruter der IKKE kræver authentication
@@ -121,124 +85,70 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 /**
- * Validerer Bearer token på edge-niveau
- * @param token - Bearer token fra Authorization header
- * @returns Promise<boolean> - True hvis token er gyldig
+ * Opretter Supabase server client med korrekt cookie-håndtering
+ * @param request - Next.js request objekt
+ * @param response - Next.js response objekt
+ * @returns Supabase client og response
  */
-async function validateBearerToken(token: string): Promise<boolean> {
-  console.log('🔐 Validerer Bearer token på edge-niveau...');
+function createSupabaseClient(request: NextRequest, response: NextResponse) {
+  console.log('🔧 Opretter Supabase server client med SSR...');
   
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    
-    if (error || !user) {
-      console.error('❌ Edge-niveau token validering fejlede:', error?.message);
-      return false;
+  // Opret Supabase client med SSR cookie-håndtering
+  const supabase = createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        // Læs cookies fra request
+        get(name: string) {
+          console.log(`🍪 Læser cookie: ${name}`);
+          return request.cookies.get(name)?.value;
+        },
+        // Sæt cookies på response
+        set(name: string, value: string, options: any) {
+          console.log(`🍪 Sætter cookie: ${name}`);
+          response.cookies.set(name, value, options);
+        },
+        // Fjern cookies fra response
+        remove(name: string, options: any) {
+          console.log(`🍪 Fjerner cookie: ${name}`);
+          response.cookies.set(name, '', { ...options, maxAge: 0 });
+        },
+      },
     }
-    
-    console.log('✅ Edge-niveau token valideret for bruger:', user.email);
-    return true;
-    
-  } catch (error) {
-    console.error('❌ Uventet fejl ved edge-niveau token validering:', error);
-    return false;
-  }
+  );
+  
+  console.log('✅ Supabase server client oprettet med SSR cookie-håndtering');
+  return { supabase, response };
 }
 
 /**
- * Validerer session fra cookies på edge-niveau med Vercel optimering
- * @param request - Next.js request objekt
+ * Validerer bruger session med Supabase SSR client
+ * @param supabase - Supabase client
  * @returns Promise<boolean> - True hvis session er gyldig
  */
-async function validateSession(request: NextRequest): Promise<boolean> {
-  console.log('🔐 Validerer session fra cookies på edge-niveau...');
+async function validateSession(supabase: any): Promise<boolean> {
+  console.log('🔐 Validerer session med Supabase SSR client...');
   
   try {
-    // LØSNING: Forbedret cookie læsning med multiple fallbacks
-    let sessionCookie = request.cookies.get('sb-access-token')?.value;
+    // Brug Supabase SSR's getSession metode
+    const { data: { session }, error } = await supabase.auth.getSession();
     
-    // Debug: Log alle tilgængelige cookies
-    const allCookies = request.cookies.getAll();
-    console.log('🍪 Alle cookies i request:', allCookies.map(c => ({
-      name: c.name,
-      value: c.value ? c.value.substring(0, 10) + '...' : 'undefined'
-    })));
-    
-    if (!sessionCookie) {
-      console.log('ℹ️ Ingen session cookie fundet');
-      
-      // LØSNING: Tjek for alternative cookie navne eller formats
-      const alternativeCookies = [
-        'sb-access-token',
-        'access_token',
-        'auth_token',
-        'session_token'
-      ];
-      
-      for (const cookieName of alternativeCookies) {
-        const altCookie = request.cookies.get(cookieName)?.value;
-        if (altCookie) {
-          console.log(`🔄 Fandt alternativ cookie: ${cookieName}`);
-          sessionCookie = altCookie;
-          break;
-        }
-      }
-      
-      if (!sessionCookie) {
-        console.log('❌ Ingen session cookies fundet');
-        return false;
-      }
+    if (error) {
+      console.error('❌ Session validering fejlede:', error.message);
+      return false;
     }
     
-    console.log('🍪 Session cookie fundet, validerer...');
-    
-    // LØSNING: Tilføj retry logic for Vercel Edge Runtime
-    const maxRetries = 3;
-    let lastError: any = null;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🔄 Session validering forsøg ${attempt}/${maxRetries}...`);
-        
-        const { data: { user }, error } = await supabase.auth.getUser(sessionCookie);
-        
-        if (error) {
-          lastError = error;
-          console.error(`❌ Session validering forsøg ${attempt} fejlede:`, error.message);
-          
-          // Hvis det er en token expired fejl, stop retries
-          if (error.message.includes('expired') || error.message.includes('invalid')) {
-            console.log('🛑 Token er ugyldig/udløbet, stopper retries');
-            break;
-          }
-          
-          // Vent kort før næste forsøg (kun på Vercel)
-          if (attempt < maxRetries && isVercelEnvironment(request)) {
-            await new Promise(resolve => setTimeout(resolve, 100 * attempt));
-          }
-          continue;
-        }
-        
-        if (user) {
-          console.log('✅ Edge-niveau session valideret for bruger:', user.email);
-          return true;
-        }
-        
-      } catch (error) {
-        lastError = error;
-        console.error(`❌ Uventet fejl ved session validering forsøg ${attempt}:`, error);
-        
-        if (attempt < maxRetries && isVercelEnvironment(request)) {
-          await new Promise(resolve => setTimeout(resolve, 100 * attempt));
-        }
-      }
+    if (session && session.user) {
+      console.log('✅ Session valideret for bruger:', session.user.email);
+      return true;
     }
     
-    console.error('❌ Alle session validering forsøg fejlede. Sidste fejl:', lastError?.message);
+    console.log('ℹ️ Ingen gyldig session fundet');
     return false;
     
   } catch (error) {
-    console.error('❌ Uventet fejl ved edge-niveau session validering:', error);
+    console.error('❌ Uventet fejl ved session validering:', error);
     return false;
   }
 }
@@ -256,7 +166,6 @@ export async function middleware(request: NextRequest) {
     host: request.headers.get('host'),
     origin: request.headers.get('origin'),
     referer: request.headers.get('referer'),
-    isVercel: isVercelEnvironment(request)
   });
   
   // Tjek om rute er offentlig
@@ -267,27 +176,18 @@ export async function middleware(request: NextRequest) {
   
   console.log(`🔒 Beskyttet rute - validerer authentication: ${pathname}`);
   
-  // Tjek Authorization header først (Bearer token)
-  const authHeader = request.headers.get('authorization');
+  // Opret response objekt for cookie-håndtering
+  const response = NextResponse.next();
   
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    console.log('🔐 Bearer token fundet i header');
-    const token = authHeader.replace('Bearer ', '');
-    
-    const isValidToken = await validateBearerToken(token);
-    if (isValidToken) {
-      console.log('✅ Bearer token valideret - tillader adgang');
-      return NextResponse.next();
-    }
-  }
+  // Opret Supabase client med SSR cookie-håndtering
+  const { supabase } = createSupabaseClient(request, response);
   
-  // Fallback til session validering
-  console.log('🔐 Ingen gyldig Bearer token, tjekker session...');
-  const isValidSession = await validateSession(request);
+  // Valider session
+  const isValidSession = await validateSession(supabase);
   
   if (isValidSession) {
     console.log('✅ Session valideret - tillader adgang');
-    return NextResponse.next();
+    return response;
   }
   
   // Ingen gyldig authentication fundet
