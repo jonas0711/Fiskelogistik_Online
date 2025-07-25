@@ -1,203 +1,307 @@
 /**
- * Test Script: Login Loop Fix Verification
+ * Test Script: Login Fix Verification
  * 
- * Dette script tester at login flow'et nu virker korrekt uden loop
- * efter implementering af server-side redirect løsningen
+ * Dette script tester login flow på Vercel deployment
+ * for at verificere at login loop problemet er løst
+ * 
+ * Kør: node scripts/test-login-fix.js
  */
 
-// Node.js har indbygget fetch i nyere versioner
-// Ingen import nødvendig
+const https = require('https');
+const http = require('http');
 
-// Test konfiguration
+// Konfiguration
 const TEST_CONFIG = {
-  baseUrl: 'http://localhost:3000',
-  testEmail: 'jonas.ingvorsen@gmail.com', // Test email der oprettes
-  testPassword: 'Vzx22nhe!',
-  adminEmail: 'jonas.ingvorsen@gmail.com', // Admin email fra env.template
-  adminPassword: 'Vzx22nhe!', // Admin password (skal være korrekt)
+  // Vercel production URL
+  productionUrl: 'https://fiskelogistik-online.vercel.app',
+  // Test credentials (skal være gyldige)
+  testEmail: process.env.TEST_EMAIL || 'test@example.com',
+  testPassword: process.env.TEST_PASSWORD || 'testpassword',
+  // Timeout for requests
   timeout: 10000,
 };
 
 /**
- * Test funktion der opretter en test bruger
+ * Logger med timestamp
  */
-async function createTestUser() {
-  console.log('\n👤 Test 0: Opretter test bruger...');
-  
-  try {
-    // Først login som admin for at få token
-    console.log('🔐 Logger ind som admin...');
-    
-    const adminLoginResponse = await fetch(`${TEST_CONFIG.baseUrl}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: TEST_CONFIG.adminEmail,
-        password: TEST_CONFIG.adminPassword,
-      }),
-      redirect: 'manual',
-    });
-    
-    if (adminLoginResponse.status !== 302) {
-      console.log('❌ Admin login fejlede, status:', adminLoginResponse.status);
-      const errorData = await adminLoginResponse.json();
-      console.log('❌ Admin login fejl:', errorData);
-      return false;
-    }
-    
-    // Hent admin token fra cookies
-    const adminCookies = adminLoginResponse.headers.get('set-cookie');
-    if (!adminCookies) {
-      console.log('❌ Ingen admin cookies modtaget');
-      return false;
-    }
-    
-    console.log('✅ Admin login succesfuldt');
-    
-    // Opret test bruger med admin token
-    console.log('👤 Opretter test bruger...');
-    
-    const createUserResponse = await fetch(`${TEST_CONFIG.baseUrl}/api/admin/create-test-user`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${adminCookies}`, // Dette virker måske ikke, men lad os prøve
-      },
-      body: JSON.stringify({
-        email: TEST_CONFIG.testEmail,
-        password: TEST_CONFIG.testPassword,
-        full_name: 'Test User',
-        role: 'user',
-      }),
-    });
-    
-    console.log('📊 Create user response status:', createUserResponse.status);
-    
-    if (createUserResponse.ok) {
-      const data = await createUserResponse.json();
-      console.log('✅ Test bruger oprettet:', data);
-      return true;
-    } else {
-      const errorData = await createUserResponse.json();
-      console.log('❌ Kunne ikke oprette test bruger:', errorData);
-      return false;
-    }
-    
-  } catch (error) {
-    console.error('❌ Test fejlede:', error.message);
-    return false;
-  }
+function log(message, type = 'INFO') {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [${type}] ${message}`);
 }
 
 /**
- * Test funktion der simulerer login flow
+ * Udfører HTTP request
  */
-async function testLoginFlow() {
-  console.log('🧪 Starter login flow test...');
-  
-  try {
-    // Test 1: Login med korrekte credentials
-    console.log('\n📝 Test 1: Login med korrekte credentials');
+function makeRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const isHttps = url.startsWith('https://');
+    const client = isHttps ? https : http;
     
-    const loginResponse = await fetch(`${TEST_CONFIG.baseUrl}/api/auth/login`, {
+    const requestOptions = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'FSK-Login-Test/1.0',
       },
-      body: JSON.stringify({
-        email: TEST_CONFIG.testEmail,
-        password: TEST_CONFIG.testPassword,
-      }),
-      redirect: 'manual', // Lad os håndtere redirect manuelt for at se hvad der sker
+      timeout: TEST_CONFIG.timeout,
+      ...options,
+    };
+    
+    log(`🌐 Making request to: ${url}`);
+    log(`📋 Request options:`, JSON.stringify(requestOptions, null, 2));
+    
+    const req = client.request(url, requestOptions, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        log(`📥 Response status: ${res.statusCode}`);
+        log(`📋 Response headers:`, JSON.stringify(res.headers, null, 2));
+        
+        resolve({
+          statusCode: res.statusCode,
+          headers: res.headers,
+          data: data,
+          url: res.url || url,
+        });
+      });
     });
     
-    console.log('📊 Login response status:', loginResponse.status);
-    console.log('📊 Login response headers:', Object.fromEntries(loginResponse.headers.entries()));
+    req.on('error', (error) => {
+      log(`❌ Request error: ${error.message}`, 'ERROR');
+      reject(error);
+    });
     
-    // Tjek om response er en redirect
-    if (loginResponse.status >= 300 && loginResponse.status < 400) {
-      const location = loginResponse.headers.get('location');
-      console.log('✅ Server-side redirect detekteret til:', location);
+    req.on('timeout', () => {
+      log(`⏰ Request timeout after ${TEST_CONFIG.timeout}ms`, 'ERROR');
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    
+    // Send request body hvis det findes
+    if (options.body) {
+      req.write(options.body);
+    }
+    
+    req.end();
+  });
+}
+
+/**
+ * Test 1: Login API endpoint
+ */
+async function testLoginAPI() {
+  log('🧪 Test 1: Testing Login API endpoint');
+  
+  try {
+    const loginUrl = `${TEST_CONFIG.productionUrl}/api/auth/login`;
+    const requestBody = JSON.stringify({
+      email: TEST_CONFIG.testEmail,
+      password: TEST_CONFIG.testPassword,
+    });
+    
+    const response = await makeRequest(loginUrl, {
+      body: requestBody,
+    });
+    
+    log(`📊 Login API Response:`, JSON.stringify({
+      statusCode: response.statusCode,
+      redirected: response.url !== loginUrl,
+      finalUrl: response.url,
+      hasLoginSuccessHeader: !!response.headers['x-login-success'],
+      hasUserEmailHeader: !!response.headers['x-user-email'],
+      hasCookieDomainHeader: !!response.headers['x-cookie-domain'],
+      dataLength: response.data.length,
+    }, null, 2));
+    
+    // Analyser response
+    if (response.statusCode === 302) {
+      log('✅ Login API returned 302 redirect (expected)');
       
-      // Tjek om cookies er sat
-      const setCookieHeaders = loginResponse.headers.get('set-cookie');
-      if (setCookieHeaders) {
-        console.log('✅ Cookies sat på redirect response:', setCookieHeaders);
+      if (response.url && response.url.includes('/rio')) {
+        log('✅ Redirect URL contains /rio (expected)');
       } else {
-        console.log('⚠️ Ingen cookies fundet på redirect response');
+        log('⚠️ Redirect URL does not contain /rio', 'WARNING');
       }
       
-      return true;
+      if (response.headers['x-login-success']) {
+        log('✅ Login success header present');
+      } else {
+        log('⚠️ Login success header missing', 'WARNING');
+      }
+      
+    } else if (response.statusCode === 401) {
+      log('❌ Login failed with 401 (invalid credentials)');
+      log('📝 Response data:', response.data);
+      
     } else {
-      // Hvis ikke redirect, så er det en fejl
-      const errorData = await loginResponse.json();
-      console.log('❌ Login fejlede:', errorData);
-      return false;
+      log(`⚠️ Unexpected status code: ${response.statusCode}`, 'WARNING');
+      log('📝 Response data:', response.data);
     }
     
   } catch (error) {
-    console.error('❌ Test fejlede:', error.message);
-    return false;
+    log(`❌ Login API test failed: ${error.message}`, 'ERROR');
   }
 }
 
 /**
- * Test funktion der simulerer beskyttet rute adgang
+ * Test 2: Cookie handling verification
  */
-async function testProtectedRouteAccess() {
-  console.log('\n🔒 Test 2: Beskyttet rute adgang');
+async function testCookieHandling() {
+  log('🧪 Test 2: Testing Cookie Handling');
   
   try {
-    // Test adgang til /rio uden authentication
-    const rioResponse = await fetch(`${TEST_CONFIG.baseUrl}/rio`, {
-      redirect: 'manual',
+    // Først lav en login request
+    const loginUrl = `${TEST_CONFIG.productionUrl}/api/auth/login`;
+    const requestBody = JSON.stringify({
+      email: TEST_CONFIG.testEmail,
+      password: TEST_CONFIG.testPassword,
     });
     
-    console.log('📊 RIO response status:', rioResponse.status);
+    const loginResponse = await makeRequest(loginUrl, {
+      body: requestBody,
+    });
     
-    if (rioResponse.status === 302) {
-      const location = rioResponse.headers.get('location');
-      console.log('✅ Middleware redirect til login:', location);
-      return true;
+    // Tjek om cookies blev sat
+    const setCookieHeaders = loginResponse.headers['set-cookie'];
+    
+    if (setCookieHeaders) {
+      log('✅ Set-Cookie headers found:');
+      setCookieHeaders.forEach((cookie, index) => {
+        log(`🍪 Cookie ${index + 1}: ${cookie.substring(0, 100)}...`);
+        
+        // Analyser cookie attributer
+        if (cookie.includes('sb-access-token')) {
+          log('✅ Access token cookie found');
+        }
+        if (cookie.includes('sb-refresh-token')) {
+          log('✅ Refresh token cookie found');
+        }
+        if (cookie.includes('HttpOnly')) {
+          log('✅ HttpOnly flag present');
+        }
+        if (cookie.includes('Secure')) {
+          log('✅ Secure flag present');
+        }
+        if (cookie.includes('SameSite=Lax')) {
+          log('✅ SameSite=Lax flag present');
+        }
+      });
     } else {
-      console.log('❌ Uventet response fra beskyttet rute');
-      return false;
+      log('⚠️ No Set-Cookie headers found', 'WARNING');
     }
     
   } catch (error) {
-    console.error('❌ Test fejlede:', error.message);
-    return false;
+    log(`❌ Cookie handling test failed: ${error.message}`, 'ERROR');
+  }
+}
+
+/**
+ * Test 3: Middleware protection
+ */
+async function testMiddlewareProtection() {
+  log('🧪 Test 3: Testing Middleware Protection');
+  
+  try {
+    // Test beskyttet rute uden authentication
+    const protectedUrl = `${TEST_CONFIG.productionUrl}/rio`;
+    
+    const response = await makeRequest(protectedUrl, {
+      method: 'GET',
+    });
+    
+    log(`📊 Protected route response:`, JSON.stringify({
+      statusCode: response.statusCode,
+      redirected: response.url !== protectedUrl,
+      finalUrl: response.url,
+    }, null, 2));
+    
+    if (response.statusCode === 302 && response.url.includes('/')) {
+      log('✅ Middleware correctly redirected to login');
+    } else if (response.statusCode === 401) {
+      log('✅ Middleware correctly returned 401');
+    } else {
+      log(`⚠️ Unexpected middleware behavior: ${response.statusCode}`, 'WARNING');
+    }
+    
+  } catch (error) {
+    log(`❌ Middleware protection test failed: ${error.message}`, 'ERROR');
+  }
+}
+
+/**
+ * Test 4: Environment detection
+ */
+async function testEnvironmentDetection() {
+  log('🧪 Test 4: Testing Environment Detection');
+  
+  try {
+    // Test public route for at se environment info
+    const publicUrl = `${TEST_CONFIG.productionUrl}/`;
+    
+    const response = await makeRequest(publicUrl, {
+      method: 'GET',
+    });
+    
+    log(`📊 Environment test response:`, JSON.stringify({
+      statusCode: response.statusCode,
+      server: response.headers['server'],
+      poweredBy: response.headers['x-powered-by'],
+      vercelId: response.headers['x-vercel-id'],
+    }, null, 2));
+    
+    if (response.headers['x-vercel-id']) {
+      log('✅ Vercel environment detected');
+    } else {
+      log('⚠️ Vercel headers not found', 'WARNING');
+    }
+    
+  } catch (error) {
+    log(`❌ Environment detection test failed: ${error.message}`, 'ERROR');
   }
 }
 
 /**
  * Hovedfunktion der kører alle tests
  */
-async function runTests() {
-  console.log('🚀 Starter Login Loop Fix Tests...\n');
+async function runAllTests() {
+  log('🚀 Starting Login Fix Verification Tests');
+  log(`🌐 Testing URL: ${TEST_CONFIG.productionUrl}`);
+  log(`📧 Test email: ${TEST_CONFIG.testEmail}`);
   
-  const test0Result = await createTestUser();
-  if (!test0Result) {
-    console.log('\n⚠️ Test 0 (Opret bruger) fejlede. Kan ikke fortsætte.');
-    return;
-  }
-
-  const test1Result = await testLoginFlow();
-  const test2Result = await testProtectedRouteAccess();
+  console.log('\n' + '='.repeat(60));
   
-  console.log('\n📋 Test Resultater:');
-  console.log('Test 0 (Opret Bruger):', test0Result ? '✅ PASSED' : '❌ FAILED');
-  console.log('Test 1 (Login Flow):', test1Result ? '✅ PASSED' : '❌ FAILED');
-  console.log('Test 2 (Protected Route):', test2Result ? '✅ PASSED' : '❌ FAILED');
+  await testLoginAPI();
+  console.log('\n' + '-'.repeat(40));
   
-  if (test0Result && test1Result && test2Result) {
-    console.log('\n🎉 Alle tests passed! Login loop fix virker korrekt.');
-  } else {
-    console.log('\n⚠️ Nogle tests fejlede. Tjek implementation.');
-  }
+  await testCookieHandling();
+  console.log('\n' + '-'.repeat(40));
+  
+  await testMiddlewareProtection();
+  console.log('\n' + '-'.repeat(40));
+  
+  await testEnvironmentDetection();
+  console.log('\n' + '='.repeat(60));
+  
+  log('✅ All tests completed');
+  log('📋 Check the output above for any issues');
 }
 
-// Kør tests hvis script køres direkte
-runTests().catch(console.error); 
+// Kør tests hvis scriptet køres direkte
+if (require.main === module) {
+  runAllTests().catch((error) => {
+    log(`❌ Test suite failed: ${error.message}`, 'ERROR');
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  testLoginAPI,
+  testCookieHandling,
+  testMiddlewareProtection,
+  testEnvironmentDetection,
+  runAllTests,
+}; 

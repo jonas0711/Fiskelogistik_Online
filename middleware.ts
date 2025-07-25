@@ -9,6 +9,7 @@
  * - Valider authentication på edge-niveau for hurtig responstid
  * - Reducer serverbelastning ved at blokere ugyldige requests tidligt
  * - Centraliseret adgangskontrol for hele applikationen
+ * LØSNING: Vercel Edge Runtime optimeret cookie håndtering
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -25,6 +26,30 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     persistSession: false
   }
 });
+
+/**
+ * Detekterer om vi kører på Vercel Edge Runtime
+ * @param request - Next.js request objekt
+ * @returns boolean - true hvis på Vercel
+ */
+function isVercelEnvironment(request: NextRequest): boolean {
+  const host = request.headers.get('host') || '';
+  const vercelId = request.headers.get('x-vercel-id');
+  const userAgent = request.headers.get('user-agent') || '';
+  
+  const isVercelDomain = host.includes('vercel.app') || host.includes('vercel.com');
+  const hasVercelHeaders = vercelId !== null;
+  
+  console.log('🔍 Middleware environment detection:', {
+    host,
+    isVercelDomain,
+    hasVercelHeaders,
+    vercelId: vercelId?.substring(0, 10) + '...',
+    userAgent: userAgent.substring(0, 30) + '...'
+  });
+  
+  return isVercelDomain || hasVercelHeaders;
+}
 
 /**
  * Ruter der IKKE kræver authentication
@@ -121,7 +146,7 @@ async function validateBearerToken(token: string): Promise<boolean> {
 }
 
 /**
- * Validerer session fra cookies på edge-niveau
+ * Validerer session fra cookies på edge-niveau med Vercel optimering
  * @param request - Next.js request objekt
  * @returns Promise<boolean> - True hvis session er gyldig
  */
@@ -129,24 +154,88 @@ async function validateSession(request: NextRequest): Promise<boolean> {
   console.log('🔐 Validerer session fra cookies på edge-niveau...');
   
   try {
-    // Hent session fra cookies
-    const sessionCookie = request.cookies.get('sb-access-token')?.value;
+    // LØSNING: Forbedret cookie læsning med multiple fallbacks
+    let sessionCookie = request.cookies.get('sb-access-token')?.value;
+    
+    // Debug: Log alle tilgængelige cookies
+    const allCookies = request.cookies.getAll();
+    console.log('🍪 Alle cookies i request:', allCookies.map(c => ({
+      name: c.name,
+      value: c.value ? c.value.substring(0, 10) + '...' : 'undefined'
+    })));
     
     if (!sessionCookie) {
       console.log('ℹ️ Ingen session cookie fundet');
-      return false;
+      
+      // LØSNING: Tjek for alternative cookie navne eller formats
+      const alternativeCookies = [
+        'sb-access-token',
+        'access_token',
+        'auth_token',
+        'session_token'
+      ];
+      
+      for (const cookieName of alternativeCookies) {
+        const altCookie = request.cookies.get(cookieName)?.value;
+        if (altCookie) {
+          console.log(`🔄 Fandt alternativ cookie: ${cookieName}`);
+          sessionCookie = altCookie;
+          break;
+        }
+      }
+      
+      if (!sessionCookie) {
+        console.log('❌ Ingen session cookies fundet');
+        return false;
+      }
     }
     
-    // Valider session token
-    const { data: { user }, error } = await supabase.auth.getUser(sessionCookie);
+    console.log('🍪 Session cookie fundet, validerer...');
     
-    if (error || !user) {
-      console.error('❌ Edge-niveau session validering fejlede:', error?.message);
-      return false;
+    // LØSNING: Tilføj retry logic for Vercel Edge Runtime
+    const maxRetries = 3;
+    let lastError: any = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Session validering forsøg ${attempt}/${maxRetries}...`);
+        
+        const { data: { user }, error } = await supabase.auth.getUser(sessionCookie);
+        
+        if (error) {
+          lastError = error;
+          console.error(`❌ Session validering forsøg ${attempt} fejlede:`, error.message);
+          
+          // Hvis det er en token expired fejl, stop retries
+          if (error.message.includes('expired') || error.message.includes('invalid')) {
+            console.log('🛑 Token er ugyldig/udløbet, stopper retries');
+            break;
+          }
+          
+          // Vent kort før næste forsøg (kun på Vercel)
+          if (attempt < maxRetries && isVercelEnvironment(request)) {
+            await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+          }
+          continue;
+        }
+        
+        if (user) {
+          console.log('✅ Edge-niveau session valideret for bruger:', user.email);
+          return true;
+        }
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ Uventet fejl ved session validering forsøg ${attempt}:`, error);
+        
+        if (attempt < maxRetries && isVercelEnvironment(request)) {
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        }
+      }
     }
     
-    console.log('✅ Edge-niveau session valideret for bruger:', user.email);
-    return true;
+    console.error('❌ Alle session validering forsøg fejlede. Sidste fejl:', lastError?.message);
+    return false;
     
   } catch (error) {
     console.error('❌ Uventet fejl ved edge-niveau session validering:', error);
@@ -163,6 +252,12 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
   console.log(`🚀 Middleware kørt for: ${pathname}`);
+  console.log('🌐 Request info:', {
+    host: request.headers.get('host'),
+    origin: request.headers.get('origin'),
+    referer: request.headers.get('referer'),
+    isVercel: isVercelEnvironment(request)
+  });
   
   // Tjek om rute er offentlig
   if (isPublicRoute(pathname)) {
@@ -212,6 +307,7 @@ export async function middleware(request: NextRequest) {
   } else {
     // Browser requests redirecter til login
     const loginUrl = new URL('/', request.url);
+    console.log(`🔄 Redirecter til login: ${loginUrl.toString()}`);
     return NextResponse.redirect(loginUrl);
   }
 }

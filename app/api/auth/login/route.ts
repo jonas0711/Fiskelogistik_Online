@@ -2,12 +2,13 @@
  * Login API Route
  * Håndterer bruger login via Supabase
  * Kun brugere der eksisterer i systemet kan logge ind
- * LØSNING: Server-side redirect for at undgå cookie timing race condition
+ * LØSNING: Vercel-specifik cookie håndtering og forbedret redirect logic
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../libs/db';
 import { isValidEmail } from '../../../../libs/utils';
+import { getCookieConfig } from '../../../../libs/config';
 
 // Interface for login request data
 interface LoginRequest {
@@ -22,6 +23,18 @@ interface ApiResponse {
   error?: string;
 }
 
+
+
+/**
+ * Opretter optimale cookie options baseret på environment
+ * @param request - Next.js request objekt
+ * @returns Cookie options objekt
+ */
+function getCookieOptions(request: NextRequest) {
+  // Brug central config funktion
+  return getCookieConfig(request);
+}
+
 /**
  * POST handler for login
  * @param request - Next.js request objekt
@@ -29,6 +42,12 @@ interface ApiResponse {
  */
 export async function POST(request: NextRequest) {
   console.log('🔐 Login API kaldt...');
+  console.log('🌐 Request headers:', {
+    host: request.headers.get('host'),
+    origin: request.headers.get('origin'),
+    referer: request.headers.get('referer'),
+    userAgent: request.headers.get('user-agent')?.substring(0, 50) + '...'
+  });
   
   try {
     // Parse request body
@@ -96,36 +115,34 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Login succesfuldt for:', data.user?.email);
     
-    // LØSNING: Opret server-side redirect response i stedet for JSON
-    // Dette sikrer at cookies og redirect sker i samme HTTP transaction
+    // LØSNING: Opret server-side redirect response med optimerede cookies
     const redirectUrl = new URL('/rio', request.url);
     const response = NextResponse.redirect(redirectUrl, 302);
     
-    // Sæt session cookies på redirect response
+    // Sæt session cookies på redirect response med Vercel-optimerede settings
     if (data.session?.access_token) {
       console.log('🍪 Sætter session cookies på redirect response...');
       
+      const cookieOptions = getCookieOptions(request);
+      console.log('🍪 Cookie options:', cookieOptions);
+      
       // Sæt access token cookie
-      response.cookies.set('sb-access-token', data.session.access_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7 dage
-        path: '/',
-      });
+      response.cookies.set('sb-access-token', data.session.access_token, cookieOptions);
       
       // Sæt refresh token cookie hvis det findes
       if (data.session.refresh_token) {
         response.cookies.set('sb-refresh-token', data.session.refresh_token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 24 * 30, // 30 dage
-          path: '/',
+          ...cookieOptions,
+          maxAge: 60 * 60 * 24 * 30, // 30 dage for refresh token
         });
       }
       
-      console.log('✅ Session cookies sat på redirect response');
+      // Tilføj debug headers for at trace cookie flow
+      response.headers.set('X-Login-Success', 'true');
+      response.headers.set('X-User-Email', data.user?.email || '');
+      response.headers.set('X-Cookie-Domain', request.headers.get('host') || '');
+      
+      console.log('✅ Session cookies sat på redirect response med Vercel-optimerede settings');
     }
     
     console.log('🔄 Returnerer server-side redirect til /rio');

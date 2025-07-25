@@ -132,7 +132,7 @@ export default function LoginForm() {
     try {
       console.log(`${LOG_PREFIXES.auth} Forsøger at logge ind via API...`);
       
-      // Kald vores login API i stedet for Supabase direkte
+      // LØSNING: Forbedret fetch med Vercel-specifik håndtering
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -144,6 +144,17 @@ export default function LoginForm() {
         }),
         // VIGTIGT: Lad browseren følge redirect automatisk
         redirect: 'follow',
+        // Tilføj credentials for at sikre cookie transmission
+        credentials: 'include',
+      });
+      
+      console.log(`${LOG_PREFIXES.auth} Login response status:`, response.status);
+      console.log(`${LOG_PREFIXES.auth} Login response headers:`, {
+        redirected: response.redirected,
+        url: response.url,
+        'x-login-success': response.headers.get('x-login-success'),
+        'x-user-email': response.headers.get('x-user-email'),
+        'x-cookie-domain': response.headers.get('x-cookie-domain'),
       });
       
       // LØSNING: Tjek om response er en redirect
@@ -153,9 +164,13 @@ export default function LoginForm() {
         // Ryd form data
         setFormData({ email: '', password: '' });
         
-        // Lad browseren følge redirect automatisk
-        // Dette sikrer at cookies og redirect sker i samme HTTP transaction
-        window.location.href = response.url;
+        // LØSNING: Forbedret redirect håndtering med timing
+        // Vent kort for at sikre cookies er sat før redirect
+        setTimeout(() => {
+          console.log(`${LOG_PREFIXES.auth} Udfører redirect til:`, response.url);
+          window.location.href = response.url;
+        }, 100);
+        
         return;
       }
       
@@ -173,6 +188,7 @@ export default function LoginForm() {
         setFormData({ email: '', password: '' });
         
         // Fallback redirect hvis der stadig er JSON response
+        console.log(`${LOG_PREFIXES.auth} Fallback redirect til /rio`);
         window.location.href = '/rio';
       }
     } catch (error) {

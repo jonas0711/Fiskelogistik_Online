@@ -4,7 +4,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { supabaseConfig } from './config';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } from './config';
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Singleton pattern for at undgå multiple instances
@@ -12,7 +12,7 @@ let supabaseInstance: SupabaseClient | null = null;
 let supabaseAdminInstance: SupabaseClient | null = null;
 
 // Tjek om miljøvariabler er sat
-if (!supabaseConfig.url || !supabaseConfig.anonKey) {
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn('⚠️ Supabase miljøvariabler ikke sat - klient vil ikke fungere korrekt');
 }
 
@@ -25,8 +25,8 @@ function getSupabaseClient() {
     console.log(`${LOG_PREFIXES.connection} Initialiserer Supabase klient...`);
     
     supabaseInstance = createClient(
-      supabaseConfig.url || 'https://placeholder.supabase.co',
-      supabaseConfig.anonKey || 'placeholder-key',
+      SUPABASE_URL || 'https://placeholder.supabase.co',
+      SUPABASE_ANON_KEY || 'placeholder-key',
       {
         auth: {
           // Automatisk opdatering af session
@@ -55,9 +55,9 @@ function getSupabaseClient() {
  */
 function getSupabaseAdminClient() {
   if (!supabaseAdminInstance) {
-    const serviceKey = supabaseConfig.serviceRoleKey || 'placeholder-service-key';
+    const serviceKey = SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
     supabaseAdminInstance = createClient(
-      supabaseConfig.url || 'https://placeholder.supabase.co',
+      SUPABASE_URL || 'https://placeholder.supabase.co',
       serviceKey,
       {
         auth: {

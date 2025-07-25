@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../libs/db';
 import { validateAdminToken } from '../../../../libs/admin';
-import { appConfig } from '../../../../libs/config';
+import { getAppUrl } from '../../../../libs/config';
 import { isValidEmail } from '../../../../libs/utils';
 
 // Interface for invitation request data
@@ -92,7 +92,8 @@ export async function POST(request: NextRequest) {
     console.log('✅ Email valideret og bruger eksisterer ikke, sender invitation...');
     
     // Opret redirect URL med invitation data
-    const redirectUrl = new URL(appConfig.inviteRedirectUrl);
+    const baseUrl = getAppUrl(request);
+    const redirectUrl = new URL('/auth/accept-invite', baseUrl);
     redirectUrl.searchParams.set('email', body.email.trim());
     if (body.full_name) {
       redirectUrl.searchParams.set('full_name', body.full_name);
