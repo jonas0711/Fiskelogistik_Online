@@ -30,20 +30,6 @@ interface LoginFormErrors {
   general?: string;
 }
 
-// Interface for API response
-interface LoginApiResponse {
-  success: boolean;
-  message: string;
-  data?: {
-    redirectUrl: string;
-    user?: {
-      email: string;
-      id: string;
-    };
-  };
-  error?: string;
-}
-
 export default function LoginForm() {
   console.log(`${LOG_PREFIXES.auth} Initialiserer LoginForm komponent...`);
   
@@ -144,7 +130,7 @@ export default function LoginForm() {
     try {
       console.log(`${LOG_PREFIXES.auth} Forsøger at logge ind via API...`);
       
-      // LØSNING: Forbedret fetch med JSON response håndtering
+      // LØSNING: Server-side redirect - følg redirect automatisk
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -154,44 +140,25 @@ export default function LoginForm() {
           email: formData.email.trim(),
           password: formData.password,
         }),
-        // VIGTIGT: Ikke følg redirect automatisk - vi håndterer det selv
-        redirect: 'manual',
-        // Tilføj credentials for at sikre cookie transmission
+        // Følg redirect automatisk - server håndterer navigation
+        redirect: 'follow',
         credentials: 'include',
       });
       
       console.log(`${LOG_PREFIXES.auth} Login response status:`, response.status);
-      console.log(`${LOG_PREFIXES.auth} Login response headers:`, {
-        'x-login-success': response.headers.get('x-login-success'),
-        'x-user-email': response.headers.get('x-user-email'),
-        'x-cookie-domain': response.headers.get('x-cookie-domain'),
-        'x-response-type': response.headers.get('x-response-type'),
-      });
+      console.log(`${LOG_PREFIXES.auth} Login response URL:`, response.url);
       
-      // Parse JSON response
-      const result: LoginApiResponse = await response.json();
-      console.log(`${LOG_PREFIXES.auth} Login API response:`, result);
-      
-      if (result.success) {
-        console.log(`${LOG_PREFIXES.success} Login succesfuldt:`, result.data?.user?.email);
-        
-        // Ryd form data
-        setFormData({ email: '', password: '' });
-        
-        // LØSNING: Client-side redirect med timing for cookie-stabilitet
-        const redirectUrl = result.data?.redirectUrl || '/rio';
-        console.log(`${LOG_PREFIXES.auth} Forbereder client-side redirect til:`, redirectUrl);
-        
-        // Vent kort for at sikre cookies er fuldt etableret
-        setTimeout(() => {
-          console.log(`${LOG_PREFIXES.auth} Udfører client-side redirect til:`, redirectUrl);
-          window.location.href = redirectUrl;
-        }, 200); // Øget ventetid for bedre cookie-stabilitet
-        
-      } else {
-        console.error(`${LOG_PREFIXES.error} Login API fejl:`, result.message);
-        setErrors({ general: result.message || 'Der opstod en fejl under login. Prøv venligst igen.' });
+      // Tjek om response er en redirect (302)
+      if (response.redirected) {
+        console.log(`${LOG_PREFIXES.success} Login succesfuldt - redirecter til:`, response.url);
+        // Server har allerede redirectet - ingen yderligere handling nødvendig
+        return;
       }
+      
+      // Hvis ikke redirect, så er det en fejl
+      const result = await response.json();
+      console.error(`${LOG_PREFIXES.error} Login API fejl:`, result.message);
+      setErrors({ general: result.message || 'Der opstod en fejl under login. Prøv venligst igen.' });
       
     } catch (error) {
       console.error(`${LOG_PREFIXES.error} Uventet fejl under login:`, error);

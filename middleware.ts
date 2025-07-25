@@ -101,18 +101,32 @@ function createSupabaseClient(request: NextRequest, response: NextResponse) {
       cookies: {
         // Læs cookies fra request
         get(name: string) {
-          console.log(`🍪 Læser cookie: ${name}`);
-          return request.cookies.get(name)?.value;
+          const cookie = request.cookies.get(name);
+          console.log(`🍪 Læser cookie: ${name} = ${cookie ? 'fundet' : 'ikke fundet'}`);
+          return cookie?.value;
         },
         // Sæt cookies på response
         set(name: string, value: string, options: any) {
           console.log(`🍪 Sætter cookie: ${name}`);
-          response.cookies.set(name, value, options);
+          response.cookies.set(name, value, {
+            ...options,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+          });
         },
         // Fjern cookies fra response
         remove(name: string, options: any) {
           console.log(`🍪 Fjerner cookie: ${name}`);
-          response.cookies.set(name, '', { ...options, maxAge: 0 });
+          response.cookies.set(name, '', { 
+            ...options, 
+            maxAge: 0,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+          });
         },
       },
     }

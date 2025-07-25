@@ -1,18 +1,11 @@
 /**
  * Logout API Route
- * Rydder session cookies og logger brugeren ud
- * LØSNING: Bruger Supabase SSR-pakke for konsistent cookie-håndtering
+ * Håndterer bruger logout via Supabase
+ * Rydder session cookies og redirecter til login
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-
-// Interface for API response
-interface ApiResponse {
-  success: boolean;
-  message: string;
-  error?: string;
-}
 
 /**
  * Opretter Supabase server client med SSR cookie-håndtering
@@ -58,49 +51,38 @@ function createSupabaseClient(request: NextRequest, response: NextResponse) {
 /**
  * POST handler for logout
  * @param request - Next.js request objekt
- * @returns NextResponse med logout resultat
+ * @returns NextResponse med redirect til login
  */
 export async function POST(request: NextRequest) {
-  console.log('🚪 Logout API kaldt...');
+  console.log('🔐 Logout API kaldt...');
   
   try {
-    // Opret response objekt for cookie-håndtering
-    const response = NextResponse.json(
-      {
-        success: true,
-        message: 'Logout succesfuldt',
-      } as ApiResponse,
-      { status: 200 }
-    );
+    // Opret redirect response til login
+    const redirectUrl = new URL('/', request.url);
+    const response = NextResponse.redirect(redirectUrl, 302);
     
     // Opret Supabase client med SSR cookie-håndtering
     const supabase = createSupabaseClient(request, response);
     
-    // Log ud via Supabase SSR client (rydder automatisk cookies)
-    console.log('🔐 Logger bruger ud via Supabase SSR...');
+    // Log ud med Supabase SSR client
     const { error } = await supabase.auth.signOut();
     
     if (error) {
-      console.warn('⚠️ Supabase logout fejl (ikke kritisk):', error.message);
+      console.error('❌ Supabase logout fejl:', error.message);
+      // Fortsæt med redirect selv ved fejl
     } else {
-      console.log('✅ Supabase SSR logout succesfuldt');
+      console.log('✅ Logout succesfuldt');
     }
     
-    // Supabase SSR client har automatisk ryddet cookies
-    console.log('✅ Session cookies ryddet via SSR client');
-    
+    // Supabase SSR client har automatisk håndteret cookie-rydning på response objektet
+    console.log('🔄 Redirecter til login efter logout');
     return response;
     
   } catch (error) {
     console.error('❌ Uventet fejl i logout API:', error);
     
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Server fejl',
-        error: 'Der opstod en uventet fejl under logout.',
-      } as ApiResponse,
-      { status: 500 }
-    );
+    // Ved fejl, redirect til login alligevel
+    const redirectUrl = new URL('/', request.url);
+    return NextResponse.redirect(redirectUrl, 302);
   }
 } 

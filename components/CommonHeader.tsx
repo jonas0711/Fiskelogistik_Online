@@ -8,7 +8,6 @@
 
 import { useRouter, usePathname } from 'next/navigation'; // Next.js navigation hooks
 import { Button } from '@/components/ui/button'; // ShadCN button komponent
-import { supabase } from '../libs/db'; // Vores Supabase klient
 import Image from 'next/image'; // Next.js Image komponent
 import { HomeIcon, AdminIcon } from '@/components/ui/icons'; // Professionelle ikoner
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config'; // Log prefixes
@@ -67,14 +66,29 @@ export default function CommonHeader({
     console.log(`${LOG_PREFIXES.auth} Starter logout process...`);
     
     try {
-      const { error } = await supabase.auth.signOut();
+      // LØSNING: Brug logout API route i stedet for direkte Supabase signOut
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        redirect: 'follow',
+        credentials: 'include',
+      });
       
-      if (error) {
-        console.error(`${LOG_PREFIXES.error} Logout fejl:`, error.message);
-      } else {
-        console.log(`${LOG_PREFIXES.success} Logout succesfuldt`);
-        router.push('/');
+      console.log(`${LOG_PREFIXES.auth} Logout response status:`, response.status);
+      console.log(`${LOG_PREFIXES.auth} Logout response URL:`, response.url);
+      
+      // Tjek om response er en redirect (302)
+      if (response.redirected) {
+        console.log(`${LOG_PREFIXES.success} Logout succesfuldt - redirecter til:`, response.url);
+        // Server har allerede redirectet - ingen yderligere handling nødvendig
+        return;
       }
+      
+      // Hvis ikke redirect, så er der en fejl
+      console.error(`${LOG_PREFIXES.error} Logout fejl - ingen redirect`);
+      
     } catch (error) {
       console.error(`${LOG_PREFIXES.error} Uventet fejl under logout:`, error);
     }

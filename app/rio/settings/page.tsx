@@ -176,16 +176,29 @@ export default function RIOSettingsPage() {
     console.log('🚪 Logger ud...');
     
     try {
-      const { error } = await supabase.auth.signOut();
+      // LØSNING: Brug logout API route i stedet for direkte Supabase signOut
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        redirect: 'follow',
+        credentials: 'include',
+      });
       
-      if (error) {
-        console.error('❌ Fejl ved log ud:', error);
-        toast.error('Kunne ikke logge ud');
+      console.log('🔐 Logout response status:', response.status);
+      console.log('🔐 Logout response URL:', response.url);
+      
+      // Tjek om response er en redirect (302)
+      if (response.redirected) {
+        console.log('✅ Logout succesfuldt - redirecter til:', response.url);
+        // Server har allerede redirectet - ingen yderligere handling nødvendig
         return;
       }
       
-      console.log('✅ Logget ud succesfuldt');
-      router.push('/');
+      // Hvis ikke redirect, så er der en fejl
+      console.error('❌ Logout fejl - ingen redirect');
+      toast.error('Kunne ikke logge ud');
       
     } catch (error) {
       console.error('❌ Uventet fejl ved log ud:', error);
