@@ -3,7 +3,7 @@
  * Håndterer bruger login med email og password
  * Kun whitelisted emails kan logge ind
  * FSK (Fiskelogistikgruppen) branded design
- * LØSNING: Server-side redirect for at undgå cookie timing race condition
+ * LØSNING: Client-side redirect efter JSON response for at undgå cookie timing race condition på Vercel
  */
 
 'use client'; // Dette gør komponenten til en client-side komponent
@@ -30,6 +30,20 @@ interface LoginFormErrors {
   general?: string;
 }
 
+// Interface for API response
+interface LoginApiResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    redirectUrl: string;
+    user?: {
+      email: string;
+      id: string;
+    };
+  };
+  error?: string;
+}
+
 export default function LoginForm() {
   console.log(`${LOG_PREFIXES.auth} Initialiserer LoginForm komponent...`);
   
@@ -44,9 +58,7 @@ export default function LoginForm() {
   
   // State til loading status
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Fjernet success message state - server-side redirect håndterer navigation
-  
+
   /**
    * Håndterer ændringer i input felterne
    * @param field - Navnet på feltet der ændres
@@ -132,7 +144,7 @@ export default function LoginForm() {
     try {
       console.log(`${LOG_PREFIXES.auth} Forsøger at logge ind via API...`);
       
-      // LØSNING: Forbedret fetch med Vercel-specifik håndtering
+      // LØSNING: Forbedret fetch med JSON response håndtering
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -142,55 +154,45 @@ export default function LoginForm() {
           email: formData.email.trim(),
           password: formData.password,
         }),
-        // VIGTIGT: Lad browseren følge redirect automatisk
-        redirect: 'follow',
+        // VIGTIGT: Ikke følg redirect automatisk - vi håndterer det selv
+        redirect: 'manual',
         // Tilføj credentials for at sikre cookie transmission
         credentials: 'include',
       });
       
       console.log(`${LOG_PREFIXES.auth} Login response status:`, response.status);
       console.log(`${LOG_PREFIXES.auth} Login response headers:`, {
-        redirected: response.redirected,
-        url: response.url,
         'x-login-success': response.headers.get('x-login-success'),
         'x-user-email': response.headers.get('x-user-email'),
         'x-cookie-domain': response.headers.get('x-cookie-domain'),
+        'x-response-type': response.headers.get('x-response-type'),
       });
       
-      // LØSNING: Tjek om response er en redirect
-      if (response.redirected) {
-        console.log(`${LOG_PREFIXES.success} Server-side redirect modtaget til:`, response.url);
+      // Parse JSON response
+      const result: LoginApiResponse = await response.json();
+      console.log(`${LOG_PREFIXES.auth} Login API response:`, result);
+      
+      if (result.success) {
+        console.log(`${LOG_PREFIXES.success} Login succesfuldt:`, result.data?.user?.email);
         
         // Ryd form data
         setFormData({ email: '', password: '' });
         
-        // LØSNING: Forbedret redirect håndtering med timing
-        // Vent kort for at sikre cookies er sat før redirect
-        setTimeout(() => {
-          console.log(`${LOG_PREFIXES.auth} Udfører redirect til:`, response.url);
-          window.location.href = response.url;
-        }, 100);
+        // LØSNING: Client-side redirect med timing for cookie-stabilitet
+        const redirectUrl = result.data?.redirectUrl || '/rio';
+        console.log(`${LOG_PREFIXES.auth} Forbereder client-side redirect til:`, redirectUrl);
         
-        return;
-      }
-      
-      // Hvis ikke redirect, så er det en fejl - parse JSON response
-      const result = await response.json();
-      
-      if (!response.ok) {
+        // Vent kort for at sikre cookies er fuldt etableret
+        setTimeout(() => {
+          console.log(`${LOG_PREFIXES.auth} Udfører client-side redirect til:`, redirectUrl);
+          window.location.href = redirectUrl;
+        }, 200); // Øget ventetid for bedre cookie-stabilitet
+        
+      } else {
         console.error(`${LOG_PREFIXES.error} Login API fejl:`, result.message);
         setErrors({ general: result.message || 'Der opstod en fejl under login. Prøv venligst igen.' });
-      } else {
-        // Dette burde ikke ske længere da vi nu bruger redirect ved success
-        console.log(`${LOG_PREFIXES.success} Login succesfuldt via API:`, result.data?.user?.email);
-        
-        // Ryd form data
-        setFormData({ email: '', password: '' });
-        
-        // Fallback redirect hvis der stadig er JSON response
-        console.log(`${LOG_PREFIXES.auth} Fallback redirect til /rio`);
-        window.location.href = '/rio';
       }
+      
     } catch (error) {
       console.error(`${LOG_PREFIXES.error} Uventet fejl under login:`, error);
       setErrors({ general: 'Der opstod en uventet fejl. Prøv venligst igen.' });

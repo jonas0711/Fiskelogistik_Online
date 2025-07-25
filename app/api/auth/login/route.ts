@@ -2,7 +2,7 @@
  * Login API Route
  * Håndterer bruger login via Supabase
  * Kun brugere der eksisterer i systemet kan logge ind
- * LØSNING: Bruger Supabase SSR-pakke for konsistent cookie-håndtering
+ * LØSNING: JSON response i stedet for server-side redirect for at undgå cookie timing race condition på Vercel
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,10 +16,17 @@ interface LoginRequest {
   password: string;
 }
 
-// Interface for API response (kun brugt ved fejl)
+// Interface for API response
 interface ApiResponse {
   success: boolean;
   message: string;
+  data?: {
+    redirectUrl: string;
+    user?: {
+      email: string;
+      id: string;
+    };
+  };
   error?: string;
 }
 
@@ -67,7 +74,7 @@ function createSupabaseClient(request: NextRequest, response: NextResponse) {
 /**
  * POST handler for login
  * @param request - Next.js request objekt
- * @returns NextResponse med login resultat eller redirect
+ * @returns NextResponse med JSON resultat
  */
 export async function POST(request: NextRequest) {
   console.log('🔐 Login API kaldt...');
@@ -87,7 +94,7 @@ export async function POST(request: NextRequest) {
     const validationResult = validateLoginRequest(body);
     if (!validationResult.isValid) {
       console.error('❌ Validering fejlede:', validationResult.errors);
-      return NextResponse.json(
+      const validationErrorResponse = NextResponse.json(
         {
           success: false,
           message: 'Ugyldig input',
@@ -95,13 +102,18 @@ export async function POST(request: NextRequest) {
         } as ApiResponse,
         { status: 400 }
       );
+      
+      // Tilføj debug headers for at trace cookie flow
+      validationErrorResponse.headers.set('X-Response-Type', 'json');
+      
+      return validationErrorResponse;
     }
     
     // Tjek om bruger eksisterer i systemet
     const userExists = await checkUserExists(body.email);
     if (!userExists) {
       console.error('❌ Bruger eksisterer ikke i systemet:', body.email);
-      return NextResponse.json(
+      const userNotFoundResponse = NextResponse.json(
         {
           success: false,
           message: 'Adgang nægtet',
@@ -109,12 +121,23 @@ export async function POST(request: NextRequest) {
         } as ApiResponse,
         { status: 403 }
       );
+      
+      // Tilføj debug headers for at trace cookie flow
+      userNotFoundResponse.headers.set('X-Response-Type', 'json');
+      
+      return userNotFoundResponse;
     }
     
     console.log('✅ Bruger eksisterer i systemet, forsøger login...');
     
-    // Opret response objekt for cookie-håndtering
-    const response = NextResponse.next();
+    // LØSNING: Opret response objekt FØRST for at sikre cookie-håndtering
+    const response = NextResponse.json(
+      {
+        success: false,
+        message: 'Login fejlede',
+      } as ApiResponse,
+      { status: 200 }
+    );
     
     // Opret Supabase client med SSR cookie-håndtering
     const supabase = createSupabaseClient(request, response);
@@ -138,7 +161,7 @@ export async function POST(request: NextRequest) {
         errorMessage = 'For mange login forsøg. Prøv igen senere';
       }
       
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           success: false,
           message: errorMessage,
@@ -146,19 +169,36 @@ export async function POST(request: NextRequest) {
         } as ApiResponse,
         { status: 401 }
       );
+      
+      // Tilføj debug headers for at trace cookie flow
+      errorResponse.headers.set('X-Response-Type', 'json');
+      
+      return errorResponse;
     }
     
     console.log('✅ Login succesfuldt for:', data.user?.email);
     
-    // LØSNING: Opret server-side redirect response
-    // Supabase SSR client har automatisk håndteret cookie-sætning
-    const redirectUrl = new URL('/rio', request.url);
-    const redirectResponse = NextResponse.redirect(redirectUrl, 302);
+    // LØSNING: Returner JSON success response i stedet for redirect
+    // Supabase SSR client har automatisk håndteret cookie-sætning på response objektet
+    const successResponse = NextResponse.json(
+      {
+        success: true,
+        message: 'Login succesfuldt',
+        data: {
+          redirectUrl: '/rio',
+          user: {
+            email: data.user?.email || '',
+            id: data.user?.id || '',
+          },
+        },
+      } as ApiResponse,
+      { status: 200 }
+    );
     
-    // Kopier cookies fra Supabase SSR response til redirect response
+    // Kopier cookies fra Supabase SSR response til success response
     response.cookies.getAll().forEach(cookie => {
-      console.log(`🍪 Kopierer cookie til redirect: ${cookie.name}`);
-      redirectResponse.cookies.set(cookie.name, cookie.value, {
+      console.log(`🍪 Kopierer cookie til success response: ${cookie.name}`);
+      successResponse.cookies.set(cookie.name, cookie.value, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -168,18 +208,19 @@ export async function POST(request: NextRequest) {
     });
     
     // Tilføj debug headers for at trace cookie flow
-    redirectResponse.headers.set('X-Login-Success', 'true');
-    redirectResponse.headers.set('X-User-Email', data.user?.email || '');
-    redirectResponse.headers.set('X-Cookie-Domain', request.headers.get('host') || '');
+    successResponse.headers.set('X-Login-Success', 'true');
+    successResponse.headers.set('X-User-Email', data.user?.email || '');
+    successResponse.headers.set('X-Cookie-Domain', request.headers.get('host') || '');
+    successResponse.headers.set('X-Response-Type', 'json');
     
-    console.log('✅ Login redirect response oprettet med SSR cookies');
-    console.log('🔄 Returnerer server-side redirect til /rio');
-    return redirectResponse;
+    console.log('✅ Login JSON response oprettet med SSR cookies');
+    console.log('🔄 Returnerer JSON success response til frontend');
+    return successResponse;
     
   } catch (error) {
     console.error('❌ Uventet fejl i login API:', error);
     
-    return NextResponse.json(
+    const serverErrorResponse = NextResponse.json(
       {
         success: false,
         message: 'Server fejl',
@@ -187,6 +228,11 @@ export async function POST(request: NextRequest) {
       } as ApiResponse,
       { status: 500 }
     );
+    
+    // Tilføj debug headers for at trace cookie flow
+    serverErrorResponse.headers.set('X-Response-Type', 'json');
+    
+    return serverErrorResponse;
   }
 }
 

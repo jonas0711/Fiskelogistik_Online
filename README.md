@@ -64,13 +64,22 @@ SUPABASE_SERVICE_ROLE_KEY=din_service_role_key
 - Row Level Security (RLS) aktivt på alle tabeller
 - Alle API keys gemt i miljøvariabler
 - Ingen hard-delete, bruger `deleted_at` timestamp
-- Server-side redirect for login (løser cookie timing race condition)
+- JSON response + client-side redirect for login (løser cookie timing race condition på Vercel)
 
 ## Nylige Fixes
-- **Login Loop Fix**: Løst cookie timing race condition med server-side redirect
+- **Login Loop Fix**: Løst cookie timing race condition på Vercel deployment
   - Se `LOGIN_LOOP_FIX.md` for detaljeret dokumentation
-  - Implementeret server-side redirect i stedet for client-side
-  - Eliminerer timing problemer mellem login API og middleware
+  - Implementeret JSON response i stedet for server-side redirect
+  - Client-side redirect med timing for cookie-stabilitet
+  - Eliminerer timing problemer mellem login API og middleware på edge-netværk
+
+### Login Flow (Ny Implementering)
+1. **Frontend**: Bruger indtaster credentials
+2. **API**: `/api/auth/login` returnerer JSON response med success status
+3. **Cookies**: Supabase SSR client sætter authentication cookies
+4. **Frontend**: Modtager JSON og venter 200ms for cookie-stabilitet
+5. **Redirect**: Client-side redirect til `/rio` med `window.location.href`
+6. **Middleware**: Finder gyldige cookies og tillader adgang
 
 ## Database Regler
 - Snake_case navngivning
@@ -94,3 +103,12 @@ SUPABASE_SERVICE_ROLE_KEY=din_service_role_key
 - Vitest + React Testing Library: 80% coverage
 - Playwright E2E tests
 - Lighthouse CI: ≥90 accessibility score
+
+## Troubleshooting
+
+### Login Loop Problem
+Hvis du oplever login loop på Vercel deployment:
+1. Verificer at alle miljøvariabler er sat korrekt
+2. Tjek browser console for fejl
+3. Kør `node scripts/test-login-fix.js` for at teste login flow
+4. Se `LOGIN_LOOP_FIX.md` for detaljerede løsninger

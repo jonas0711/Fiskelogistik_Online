@@ -1,400 +1,208 @@
-# Login Loop Fix - Implementation Guide
+# Login Loop Fix - Vercel Deployment
 
-**Dato:** 23. juli 2025  
-**Projekt:** FSK Online Dashboard  
-**Problem:** Login loop på Vercel production deployment  
-**Status:** Løsning implementeret ✅
+## Problembeskrivelse
 
----
+### Symptomer
+- Uendeligt login-loop på Vercel deployment
+- Bruger indtaster korrekte credentials
+- Ser kort glimt af beskyttet side (/rio)
+- Bliver omdirigeret tilbage til login-siden
+- Gentager sig i uendelig løkke
 
-## Problem Beskrivelse
+### Teknisk Årsag
+Problemet skyldes en **cookie timing race condition** på Vercel's edge-netværk:
 
-Produktions-deployment på Vercel oplevede et kritisk login loop problem hvor brugere ikke kunne logge ind. Efter succesfuldt login redirectes brugeren tilbage til login siden, hvilket skabte en uendelig loop.
+1. **Server-side redirect (302)** sammen med **Set-Cookie headers**
+2. **Edge-netværk timing**: Cookies bliver ikke sat korrekt før redirect
+3. **Middleware afvisning**: Ingen gyldige session cookies fundet
+4. **Loop**: Bruger redirectes tilbage til login
 
-### Root Cause
-- **Cookie håndtering på Vercel Edge Runtime** - Cookies sættes ikke korrekt på production
-- **Middleware cookie læsning** - Edge runtime kan ikke læse cookies korrekt
-- **Environment detection** - Mangler Vercel-specifik logic
-- **Redirect timing** - Race condition mellem cookie setting og redirect
+## Løsningsstrategi
 
----
+### Fra Server-side til Client-side Redirect
 
-## Implementerede Løsninger
-
-### 1. **Login API Route Forbedringer** (`app/api/auth/login/route.ts`)
-
-#### ✅ Vercel Environment Detection
+**Gamle implementering (problem):**
 ```typescript
-function isVercelProduction(request: NextRequest): boolean {
-  const host = request.headers.get('host') || '';
-  const isVercelDomain = host.includes('vercel.app') || host.includes('vercel.com');
-  const isProduction = process.env.NODE_ENV === 'production';
-  const hasVercelHeaders = request.headers.get('x-vercel-id') !== null;
-  
-  return isVercelDomain && isProduction;
-}
+// API returnerer 302 redirect
+return NextResponse.redirect(redirectUrl, 302);
 ```
 
-#### ✅ Optimerede Cookie Options
+**Ny implementering (løsning):**
 ```typescript
-function getCookieOptions(request: NextRequest) {
-  const isVercel = isVercelProduction(request);
-  
-  const baseOptions = {
+// API returnerer JSON response
+return NextResponse.json({
+  success: true,
+  data: { redirectUrl: '/rio' }
+});
+```
+
+## Implementeringsdetaljer
+
+### 1. Login API Endpoint (`app/api/auth/login/route.ts`)
+
+**Ændringer:**
+- Returnerer JSON response i stedet for 302 redirect
+- Opretter response objekt FØRST
+- Konfigurerer Supabase SSR client til at operere på response objektet
+- Kopierer cookies fra Supabase response til JSON response
+
+**Kode:**
+```typescript
+// LØSNING: Opret response objekt FØRST for at sikre cookie-håndtering
+const response = NextResponse.json(
+  {
+    success: false,
+    message: 'Login fejlede',
+  } as ApiResponse,
+  { status: 200 }
+);
+
+// Opret Supabase client med SSR cookie-håndtering
+const supabase = createSupabaseClient(request, response);
+
+// Efter succesfuld login
+const successResponse = NextResponse.json(
+  {
+    success: true,
+    message: 'Login succesfuldt',
+    data: {
+      redirectUrl: '/rio',
+      user: { email: data.user?.email, id: data.user?.id }
+    },
+  } as ApiResponse,
+  { status: 200 }
+);
+
+// Kopier cookies fra Supabase SSR response
+response.cookies.getAll().forEach(cookie => {
+  successResponse.cookies.set(cookie.name, cookie.value, {
     httpOnly: true,
-    sameSite: 'lax' as const, // Lax for kompatibilitet med redirects
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
     path: '/',
-  };
-  
-  if (isVercel) {
-    return {
-      ...baseOptions,
-      secure: true, // HTTPS kun
-      // IKKE sæt explicit domæne på Vercel - lad browser håndtere det
-      maxAge: 60 * 60 * 24 * 7, // 7 dage
-    };
-  } else {
-    return {
-      ...baseOptions,
-      secure: false, // Tillad HTTP i development
-      maxAge: 60 * 60 * 24 * 7, // 7 dage
-    };
-  }
-}
+  });
+});
 ```
 
-#### ✅ Debug Headers
+### 2. LoginForm Component (`components/LoginForm.tsx`)
+
+**Ændringer:**
+- Modtager JSON response i stedet for at følge redirect
+- Implementerer client-side redirect med timing
+- Bruger `redirect: 'manual'` for at undgå automatisk redirect
+
+**Kode:**
 ```typescript
-// Tilføj debug headers for at trace cookie flow
-response.headers.set('X-Login-Success', 'true');
-response.headers.set('X-User-Email', data.user?.email || '');
-response.headers.set('X-Cookie-Domain', request.headers.get('host') || '');
-```
-
-### 2. **Middleware Forbedringer** (`middleware.ts`)
-
-#### ✅ Vercel Environment Detection
-```typescript
-function isVercelEnvironment(request: NextRequest): boolean {
-  const host = request.headers.get('host') || '';
-  const vercelId = request.headers.get('x-vercel-id');
-  
-  const isVercelDomain = host.includes('vercel.app') || host.includes('vercel.com');
-  const hasVercelHeaders = vercelId !== null;
-  
-  return isVercelDomain || hasVercelHeaders;
-}
-```
-
-#### ✅ Forbedret Cookie Læsning
-```typescript
-// Debug: Log alle tilgængelige cookies
-const allCookies = request.cookies.getAll();
-console.log('🍪 Alle cookies i request:', allCookies.map(c => ({
-  name: c.name,
-  value: c.value ? c.value.substring(0, 10) + '...' : 'undefined'
-})));
-
-// Tjek for alternative cookie navne
-const alternativeCookies = [
-  'sb-access-token',
-  'access_token',
-  'auth_token',
-  'session_token'
-];
-```
-
-#### ✅ Retry Logic for Edge Runtime
-```typescript
-const maxRetries = 3;
-let lastError: any = null;
-
-for (let attempt = 1; attempt <= maxRetries; attempt++) {
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser(sessionCookie);
-    
-    if (error) {
-      lastError = error;
-      
-      // Hvis det er en token expired fejl, stop retries
-      if (error.message.includes('expired') || error.message.includes('invalid')) {
-        break;
-      }
-      
-      // Vent kort før næste forsøg (kun på Vercel)
-      if (attempt < maxRetries && isVercelEnvironment(request)) {
-        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
-      }
-      continue;
-    }
-    
-    if (user) {
-      return true;
-    }
-  } catch (error) {
-    lastError = error;
-  }
-}
-```
-
-### 3. **Frontend Login Form Forbedringer** (`components/LoginForm.tsx`)
-
-#### ✅ Forbedret Fetch Configuration
-```typescript
+// LØSNING: Forbedret fetch med JSON response håndtering
 const response = await fetch('/api/auth/login', {
   method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    email: formData.email.trim(),
-    password: formData.password,
-  }),
-  redirect: 'follow',
-  credentials: 'include', // Sikrer cookie transmission
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: formData.email, password: formData.password }),
+  redirect: 'manual', // Vigtigt: Ikke følg redirect automatisk
+  credentials: 'include',
 });
-```
 
-#### ✅ Debug Response Logging
-```typescript
-console.log(`${LOG_PREFIXES.auth} Login response status:`, response.status);
-console.log(`${LOG_PREFIXES.auth} Login response headers:`, {
-  redirected: response.redirected,
-  url: response.url,
-  'x-login-success': response.headers.get('x-login-success'),
-  'x-user-email': response.headers.get('x-user-email'),
-  'x-cookie-domain': response.headers.get('x-cookie-domain'),
-});
-```
+// Parse JSON response
+const result: LoginApiResponse = await response.json();
 
-#### ✅ Timing-baseret Redirect
-```typescript
-// Vent kort for at sikre cookies er sat før redirect
-setTimeout(() => {
-  console.log(`${LOG_PREFIXES.auth} Udfører redirect til:`, response.url);
-  window.location.href = response.url;
-}, 100);
-```
-
-### 4. **Central Configuration** (`libs/config.ts`)
-
-#### ✅ Vercel-specifik Konfiguration
-```typescript
-export const IS_VERCEL = process.env.VERCEL === '1';
-export const VERCEL_ENVIRONMENT = process.env.VERCEL_ENV || 'development';
-export const VERCEL_URL = process.env.VERCEL_URL;
-export const VERCEL_REGION = process.env.VERCEL_REGION;
-
-export function getCookieConfig(request?: Request) {
-  const isVercel = IS_VERCEL || (request?.headers.get('x-vercel-id') !== null);
-  const isProduction = IS_PRODUCTION || isVercel;
+if (result.success) {
+  // LØSNING: Client-side redirect med timing for cookie-stabilitet
+  const redirectUrl = result.data?.redirectUrl || '/rio';
   
-  return {
-    httpOnly: true,
-    secure: isProduction, // HTTPS kun på production/Vercel
-    sameSite: 'lax' as const, // Lax for kompatibilitet med redirects
-    path: '/',
-    maxAge: 60 * 60 * 24 * 7, // 7 dage
-  };
+  // Vent kort for at sikre cookies er fuldt etableret
+  setTimeout(() => {
+    window.location.href = redirectUrl;
+  }, 200); // Øget ventetid for bedre cookie-stabilitet
 }
 ```
 
----
+### 3. Middleware (`middleware.ts`)
 
-## Deployment Guide
+**Ingen ændringer nødvendige:**
+- Bruger allerede Supabase SSR korrekt
+- Håndterer cookies korrekt
+- Problemet var i login flow, ikke middleware
 
-### 1. **Pre-deployment Checklist**
+## Test og Verifikation
 
-- [ ] Alle ændringer er committed til git
-- [ ] Lokal development fungerer korrekt
-- [ ] Environment variabler er sat i Vercel
-- [ ] Test script er klar til kørsel
-
-### 2. **Deploy til Preview Environment**
-
+### Lokal Test
 ```bash
-# Push til feature branch
-git push origin feature/login-loop-fix
+# Start udviklingsserver
+npm run dev
 
-# Opret Pull Request på GitHub
-# Dette trigger automatisk preview deployment
-```
-
-### 3. **Test på Preview Environment**
-
-```bash
-# Kør test script på preview URL
+# Kør test script
 node scripts/test-login-fix.js
 ```
 
-**Forventede resultater:**
-- ✅ Login API returnerer 302 redirect
-- ✅ Set-Cookie headers er til stede
-- ✅ Middleware redirecter korrekt til login
-- ✅ Vercel environment er detekteret
+### Vercel Deployment Test
+1. Deploy til Vercel
+2. Test login flow
+3. Verificer at cookies bliver sat korrekt
+4. Tjek browser console for fejl
 
-### 4. **Deploy til Production**
+### Debug Headers
+API'et returnerer debug headers for lettere fejlfinding:
+- `X-Login-Success`: Indikerer succesfuld login
+- `X-User-Email`: Bruger email
+- `X-Cookie-Domain`: Cookie domain
+- `X-Response-Type`: Response type (json)
 
-```bash
-# Merge Pull Request til main branch
-# Dette trigger automatisk production deployment
-```
+## Forventede Resultater
 
-### 5. **Post-deployment Verification**
+### Efter Fix
+1. **Login API**: Returnerer JSON med success status
+2. **Cookies**: Sættes korrekt via Supabase SSR
+3. **Frontend**: Modtager JSON og venter 200ms
+4. **Redirect**: Client-side redirect til /rio
+5. **Middleware**: Finder gyldige cookies og tillader adgang
+6. **Resultat**: Ingen login loop
 
-```bash
-# Kør test script på production
-node scripts/test-login-fix.js
-```
-
-**Verificer:**
-- [ ] Login flow virker uden loops
-- [ ] Session persists korrekt
-- [ ] Alle browsere supporteret
-- [ ] Mobile browsere fungerer
-
----
-
-## Test Script
-
-### Kør Test Script
-
-```bash
-# Test på production
-node scripts/test-login-fix.js
-
-# Test med custom credentials
-TEST_EMAIL=your@email.com TEST_PASSWORD=yourpassword node scripts/test-login-fix.js
-```
-
-### Test Output Forventning
-
-```
-[2025-07-23T10:00:00.000Z] [INFO] 🚀 Starting Login Fix Verification Tests
-[2025-07-23T10:00:00.000Z] [INFO] 🌐 Testing URL: https://fiskelogistik-online.vercel.app
-[2025-07-23T10:00:00.000Z] [INFO] 📧 Test email: test@example.com
-
-============================================================
-
-[2025-07-23T10:00:01.000Z] [INFO] 🧪 Test 1: Testing Login API endpoint
-[2025-07-23T10:00:01.000Z] [INFO] ✅ Login API returned 302 redirect (expected)
-[2025-07-23T10:00:01.000Z] [INFO] ✅ Redirect URL contains /rio (expected)
-[2025-07-23T10:00:01.000Z] [INFO] ✅ Login success header present
-
-----------------------------------------
-
-[2025-07-23T10:00:02.000Z] [INFO] 🧪 Test 2: Testing Cookie Handling
-[2025-07-23T10:00:02.000Z] [INFO] ✅ Set-Cookie headers found:
-[2025-07-23T10:00:02.000Z] [INFO] 🍪 Cookie 1: sb-access-token=eyJ...; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800
-[2025-07-23T10:00:02.000Z] [INFO] ✅ Access token cookie found
-[2025-07-23T10:00:02.000Z] [INFO] ✅ HttpOnly flag present
-[2025-07-23T10:00:02.000Z] [INFO] ✅ Secure flag present
-[2025-07-23T10:00:02.000Z] [INFO] ✅ SameSite=Lax flag present
-
-----------------------------------------
-
-[2025-07-23T10:00:03.000Z] [INFO] 🧪 Test 3: Testing Middleware Protection
-[2025-07-23T10:00:03.000Z] [INFO] ✅ Middleware correctly redirected to login
-
-----------------------------------------
-
-[2025-07-23T10:00:04.000Z] [INFO] 🧪 Test 4: Testing Environment Detection
-[2025-07-23T10:00:04.000Z] [INFO] ✅ Vercel environment detected
-
-============================================================
-
-[2025-07-23T10:00:04.000Z] [INFO] ✅ All tests completed
-[2025-07-23T10:00:04.000Z] [INFO] 📋 Check the output above for any issues
-```
-
----
+### Performance
+- **Før**: Race condition mellem cookies og redirect
+- **Efter**: Kontrolleret timing med client-side redirect
+- **Impact**: Minimal - kun 200ms ekstra ventetid
 
 ## Troubleshooting
 
-### Hvis Login Loop Stadig Eksisterer
+### Hvis problemet fortsætter
 
-1. **Tjek Vercel Function Logs**
+1. **Tjek miljøvariabler:**
    ```bash
-   # Gå til Vercel Dashboard > Functions > Login API
-   # Tjek for cookie setting fejl
+   # Verificer at alle variabler er sat
+   echo $NEXT_PUBLIC_SUPABASE_URL
+   echo $NEXT_PUBLIC_SUPABASE_ANON_KEY
    ```
 
-2. **Verificer Environment Variables**
+2. **Browser console:**
+   - Åbn Developer Tools
+   - Tjek Console for fejl
+   - Tjek Network tab for API calls
+
+3. **Cookie inspection:**
+   - Åbn Application tab i Developer Tools
+   - Tjek Cookies under domain
+   - Verificer at Supabase cookies er sat
+
+4. **API test:**
    ```bash
-   # Tjek at alle variabler er sat korrekt
-   NEXT_PUBLIC_SUPABASE_URL
-   SUPABASE_SERVICE_ROLE_KEY
-   VERCEL=1 (automatisk sat af Vercel)
+   # Test login API direkte
+   curl -X POST http://localhost:3000/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"test@example.com","password":"test"}'
    ```
 
-3. **Test Cookie Settings**
-   ```bash
-   # Åbn browser developer tools
-   # Gå til Application > Cookies
-   # Tjek om cookies er sat korrekt
-   ```
-
-### Hvis Middleware Fejler
-
-1. **Tjek Edge Runtime Logs**
-   ```bash
-   # Vercel Dashboard > Functions > Middleware
-   # Tjek for cookie læsning fejl
-   ```
-
-2. **Verificer Cookie Names**
-   ```bash
-   # Tjek at cookie navne matcher
-   sb-access-token
-   sb-refresh-token
-   ```
-
-### Hvis Redirect Ikke Virker
-
-1. **Tjek Response Headers**
-   ```bash
-   # Browser Network tab
-   # Tjek Location header på login response
-   ```
-
-2. **Verificer Frontend Logic**
-   ```bash
-   # Console logs i browser
-   # Tjek om redirect URL er korrekt
-   ```
-
----
-
-## Success Criteria
-
-### ✅ Funktionel Success
-- [ ] Bruger kan logge ind på production uden loops
-- [ ] Session persists korrekt efter login
-- [ ] Alle browsere supporteret (Chrome, Firefox, Safari)
-- [ ] Mobile browsere fungerer korrekt
-
-### ✅ Teknisk Success
-- [ ] Vercel function logs viser succesfuld cookie setting
-- [ ] Middleware kan læse cookies korrekt
-- [ ] Ingen error logs relateret til authentication
-- [ ] Response times er acceptable (<2 sekunder total login flow)
-
-### ✅ Monitoring og Måling
-- [ ] Setup monitoring til at detektere fremtidige login problemer
-- [ ] Implementer metrics til login success rate
-- [ ] Error tracking for authentication failures
-
----
+### Debug Steps
+1. Kør `node scripts/test-login-fix.js`
+2. Tjek response headers for `X-Response-Type: json`
+3. Verificer at cookies bliver sat i response
+4. Test client-side redirect timing
 
 ## Konklusion
 
-Login loop problemet er nu løst med følgende nøgleforbedringer:
+Denne løsning eliminerer login-loop problemet ved at:
+- Undgå server-side redirect race condition
+- Implementere kontrolleret client-side redirect
+- Sikre korrekt cookie timing
+- Bevare alle sikkerhedsforanstaltninger
 
-1. **Vercel-specifik cookie håndtering** - Cookies sættes korrekt på production
-2. **Forbedret middleware cookie læsning** - Edge runtime kan nu læse cookies
-3. **Environment detection** - Automatisk detection af Vercel environment
-4. **Debug logging** - Detaljeret logging til troubleshooting
-5. **Retry logic** - Robust error handling på edge runtime
-
-**Estimeret løsningstid:** 4-8 timer development + testing  
-**Status:** ✅ Implementeret og klar til deployment 
+Løsningen følger Supabase's anbefalede praksis for SSR authentication på serverless platforme og er kompatibel med Vercel's edge-netværk. 
