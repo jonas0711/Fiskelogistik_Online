@@ -151,7 +151,7 @@ export default function LoginForm() {
       // Tjek om response er en redirect (302)
       if (response.redirected) {
         console.log(`${LOG_PREFIXES.success} Login succesfuldt - redirecter til:`, response.url);
-        // Server har allerede redirectet - ingen yderligere handling nødvendig
+        window.location.href = response.url;
         return;
       }
       
@@ -187,6 +187,7 @@ export default function LoginForm() {
                 src="/fiskelogistikgruppen-logo.png"
                 alt="FSK Logo"
                 fill
+                sizes="64px"
                 className="object-contain"
                 priority
               />

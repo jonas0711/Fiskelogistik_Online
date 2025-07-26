@@ -93,20 +93,29 @@ function isPublicRoute(pathname: string): boolean {
 function createSupabaseClient(request: NextRequest, response: NextResponse) {
   console.log('🔧 Opretter Supabase server client med SSR...');
   
+  // Cache til at gemme cookie værdier
+  const cookieCache = new Map<string, string | undefined>();
+  
   // Opret Supabase client med SSR cookie-håndtering
   const supabase = createServerClient(
     supabaseUrl,
     supabaseAnonKey,
     {
       cookies: {
-        // Læs cookies fra request
+        // Læs cookies fra request med caching
         get(name: string) {
-          const cookie = request.cookies.get(name);
-          console.log(`🍪 Læser cookie: ${name} = ${cookie ? 'fundet' : 'ikke fundet'}`);
-          return cookie?.value;
+          if (!cookieCache.has(name)) {
+            const cookie = request.cookies.get(name);
+            cookieCache.set(name, cookie?.value);
+            if (name.includes('auth-token')) {
+              console.log(`🍪 Læser auth cookie: ${name} = ${cookie ? 'fundet' : 'ikke fundet'}`);
+            }
+          }
+          return cookieCache.get(name);
         },
-        // Sæt cookies på response
+        // Sæt cookies på response og cache
         set(name: string, value: string, options: any) {
+          cookieCache.set(name, value);
           console.log(`🍪 Sætter cookie: ${name}`);
           response.cookies.set(name, value, {
             ...options,
@@ -114,10 +123,14 @@ function createSupabaseClient(request: NextRequest, response: NextResponse) {
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/',
+            domain: process.env.NODE_ENV === 'production' 
+              ? process.env.NEXT_PUBLIC_DOMAIN 
+              : undefined // Lad browseren håndtere localhost
           });
         },
-        // Fjern cookies fra response
+        // Fjern cookies fra response og cache
         remove(name: string, options: any) {
+          cookieCache.delete(name);
           console.log(`🍪 Fjerner cookie: ${name}`);
           response.cookies.set(name, '', { 
             ...options, 
@@ -126,6 +139,9 @@ function createSupabaseClient(request: NextRequest, response: NextResponse) {
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/',
+            domain: process.env.NODE_ENV === 'production'
+              ? process.env.NEXT_PUBLIC_DOMAIN
+              : undefined
           });
         },
       },
@@ -145,20 +161,37 @@ async function validateSession(supabase: any): Promise<boolean> {
   console.log('🔐 Validerer session med Supabase SSR client...');
   
   try {
-    // Brug Supabase SSR's getSession metode
-    const { data: { session }, error } = await supabase.auth.getSession();
+    // Valider bruger med getUser (sikker metode)
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     
-    if (error) {
-      console.error('❌ Session validering fejlede:', error.message);
+    if (userError) {
+      console.error('❌ Bruger validering fejlede:', userError.message);
+      console.error('Fejl detaljer:', JSON.stringify(userError, null, 2));
       return false;
     }
     
-    if (session && session.user) {
-      console.log('✅ Session valideret for bruger:', session.user.email);
-      return true;
+    if (user) {
+      // Dobbeltcheck session efter bruger validering
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('❌ Session validering fejlede:', sessionError.message);
+        return false;
+      }
+      
+      if (session) {
+        console.log('✅ Session valideret for bruger:', user.email);
+        console.log('📅 Session udløber:', new Date(session.expires_at * 1000).toISOString());
+        return true;
+      }
     }
     
     console.log('ℹ️ Ingen gyldig session fundet');
+    console.log('Debug info:', {
+      hasUser: !!user,
+      userEmail: user?.email,
+      timestamp: new Date().toISOString()
+    });
     return false;
     
   } catch (error) {
@@ -193,15 +226,31 @@ export async function middleware(request: NextRequest) {
   // Opret response objekt for cookie-håndtering
   const response = NextResponse.next();
   
-  // Opret Supabase client med SSR cookie-håndtering
-  const { supabase } = createSupabaseClient(request, response);
-  
-  // Valider session
-  const isValidSession = await validateSession(supabase);
-  
-  if (isValidSession) {
-    console.log('✅ Session valideret - tillader adgang');
-    return response;
+  try {
+    // Opret Supabase client med SSR cookie-håndtering
+    const { supabase } = createSupabaseClient(request, response);
+    
+    // Valider session med timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Session validering timeout')), 5000);
+    });
+    
+    const sessionPromise = validateSession(supabase);
+    const isValidSession = await Promise.race([sessionPromise, timeoutPromise])
+      .catch(error => {
+        console.error('Session validering fejlede:', error);
+        return false;
+      });
+    
+    if (isValidSession) {
+      console.log('✅ Session valideret - tillader adgang');
+      // Sæt en custom header så vi kan tracke auth status
+      response.headers.set('X-Auth-Status', 'validated');
+      return response;
+    }
+  } catch (error) {
+    console.error('Uventet fejl i middleware:', error);
+    // Fortsæt til login redirect i tilfælde af fejl
   }
   
   // Ingen gyldig authentication fundet
@@ -233,14 +282,17 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match alle request paths undtagen:
+     * Match alle paths undtagen:
      * - api/auth/* (authentication endpoints)
-     * - _next/* (alle Next.js interne filer)
+     * - _next/* (Next.js internal files)
+     * - _next/static/* (Next.js static files)
+     * - _next/image/* (Next.js optimized images)
      * - favicon.ico (favicon file)
      * - sw.js (service worker)
-     * - fiskelogistikgruppen-logo.png (logo fil)
-     * - offentlige ruter defineret i PUBLIC_ROUTES
+     * - fiskelogistikgruppen-logo.png (logo)
+     * - *.ts, *.js, *.css (source files)
+     * - public ruter defineret i PUBLIC_ROUTES
      */
-    '/((?!api/auth|_next|favicon.ico|sw.js|fiskelogistikgruppen-logo.png).*)',
+    '/((?!api/auth/|_next/|_next/static/|_next/image/|favicon.ico|sw.js|fiskelogistikgruppen-logo.png|\\.ts|\\.js|\\.css).*)',
   ],
 }; 

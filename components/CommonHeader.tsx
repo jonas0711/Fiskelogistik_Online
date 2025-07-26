@@ -122,6 +122,7 @@ export default function CommonHeader({
                   src="/fiskelogistikgruppen-logo.png"
                   alt="FSK Logo"
                   fill
+                  sizes="40px"
                   className="object-contain"
                   priority
                 />

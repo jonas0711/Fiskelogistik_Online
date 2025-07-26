@@ -106,9 +106,8 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Bruger eksisterer i systemet, forsøger login...');
     
-    // LØSNING: Opret redirect response FØRST for at sikre cookie-håndtering
-    const redirectUrl = new URL('/rio', request.url);
-    const response = NextResponse.redirect(redirectUrl, 302);
+    // Opret response for cookie-håndtering
+    const response = NextResponse.next();
     
     // Opret Supabase client med SSR cookie-håndtering
     const supabase = createSupabaseClient(request, response);
@@ -146,8 +145,16 @@ export async function POST(request: NextRequest) {
     console.log('🔄 Redirecter til /rio med SSR cookies');
     
     // Supabase SSR client har automatisk håndteret cookie-sætning på response objektet
-    // Returner redirect response med cookies
-    return response;
+    // Opret redirect response efter vellykket login
+    const redirectUrl = new URL('/rio', request.url);
+    const redirectResponse = NextResponse.redirect(redirectUrl, 302);
+    
+    // Kopier alle cookies fra det oprindelige response til redirect response
+    response.cookies.getAll().forEach(cookie => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    
+    return redirectResponse;
     
   } catch (error) {
     console.error('❌ Uventet fejl i login API:', error);
