@@ -100,24 +100,7 @@ function RIOHomePageLoading() {
 /**
  * Hovedkomponent med Suspense wrapper
  */
-/**
- * Error boundary komponent
- */
-function RIOHomePageError() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4">
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="text-red-600 mb-4">Session udløbet - venligst log ind igen</div>
-        <button
-          onClick={() => window.location.href = '/'}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Gå til login
-        </button>
-      </div>
-    </div>
-  );
-}
+
 
 export default async function RIOHomePage() {
   console.log(`${LOG_PREFIXES.render} Renderer RIO Home Page...`);

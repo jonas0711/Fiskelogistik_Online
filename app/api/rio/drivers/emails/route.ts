@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Få unikke chauffør navne
-    const uniqueDrivers = [...new Set(driversData?.map(d => d.driver_name.trim()) || [])];
+    const uniqueDrivers = [...new Set(driversData?.map((d: any) => String(d.driver_name).trim()) || [])] as string[];
     console.log(`${LOG_PREFIXES.info} Fandt ${uniqueDrivers.length} unikke chauffører`);
     
     // Hent eksisterende emails fra driver_emails tabel (bruger admin klient for at bypasse RLS)

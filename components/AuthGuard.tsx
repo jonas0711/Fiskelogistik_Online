@@ -81,7 +81,7 @@ export default function AuthGuard({
     
     // Lyt til authentication ændringer
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event) => {
+      async (event: any) => {
         if (event === 'SIGNED_OUT') {
           setIsAuthenticated(false);
           setIsAdmin(false);

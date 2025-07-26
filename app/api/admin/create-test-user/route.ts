@@ -16,16 +16,7 @@ interface CreateUserRequest {
   role?: 'admin' | 'user';
 }
 
-// Interface for API response
-interface ApiResponse {
-  success: boolean;
-  message: string;
-  data?: {
-    user_id?: string;
-    email?: string;
-  };
-  error?: string;
-}
+
 
 /**
  * POST /api/admin/create-test-user

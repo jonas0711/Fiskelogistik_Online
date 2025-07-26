@@ -625,15 +625,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Behandl data
     const uniquePeriods = monthYearData ? 
       Array.from(new Set(monthYearData.map((item: { year: number; month: number }) => `${item.year}-${item.month}`)))
-        .map((period: string) => {
-          const [year, month] = period.split('-');
+        .map((period) => {
+          const [year, month] = (period as string).split('-');
           return { year: parseInt(year), month: parseInt(month) };
         })
         .sort((a, b) => b.year - a.year || b.month - a.month) : [];
     
     const uniqueDrivers = driverNames ? 
       Array.from(new Set(driverNames.map((item: { driver_name: string }) => item.driver_name)))
-        .filter((name: string) => name && name.trim() !== '')
+        .filter((name) => (name as string) && (name as string).trim() !== '')
         .sort() : [];
     
     console.log('✅ Rapport muligheder hentet:', {

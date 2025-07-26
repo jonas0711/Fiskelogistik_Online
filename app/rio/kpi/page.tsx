@@ -177,8 +177,8 @@ export default function RIOKPIPage() {
       
       // Fjern duplikater og sorter
       const uniqueMonths = Array.from(
-        new Set(allMonths.map(m => `${m.year}-${m.month}`))
-      ).map(dateStr => {
+        new Set(allMonths.map((m: any) => `${m.year}-${m.month}`))
+      ).map((dateStr: any) => {
         const [year, month] = dateStr.split('-').map(Number);
         return { year, month };
       });

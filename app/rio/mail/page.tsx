@@ -74,7 +74,7 @@ export default function RIOMailPage() {
         .select('driver_name, email');
       
       if (!emailError && emailStats) {
-        const validEmails = emailStats.filter(stat => 
+        const validEmails = emailStats.filter((stat: any) => 
           stat.email && stat.email.trim() && stat.email.includes('@')
         );
         

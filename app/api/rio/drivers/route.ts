@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       // Gruppér data efter chauffør navn for at få unikke chauffører
       const uniqueDrivers = new Map();
       
-      data?.forEach((record) => {
+      data?.forEach((record: any) => {
         const driverName = record.driver_name.trim();
         
         if (!uniqueDrivers.has(driverName)) {

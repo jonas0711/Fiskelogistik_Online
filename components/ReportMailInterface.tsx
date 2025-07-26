@@ -100,8 +100,8 @@ export default function ReportMailInterface({ isOpen, onClose, defaultPeriod }: 
       
       // Opret unikke perioder
       const uniquePeriods = Array.from(
-        new Map(data.map(item => [`${item.year}-${item.month}`, item])).values()
-      ).map(item => ({
+        new Map(data.map((item: any) => [`${item.year}-${item.month}`, item])).values()
+      ).map((item: any) => ({
         year: item.year,
         month: item.month,
         label: `${monthNames[item.month - 1]} ${item.year}`
@@ -166,7 +166,7 @@ export default function ReportMailInterface({ isOpen, onClose, defaultPeriod }: 
       
       // Opret email mapping
       const emailMap = new Map();
-      emailData?.forEach(record => {
+      emailData?.forEach((record: any) => {
         emailMap.set(record.driver_name, {
           email: record.email || '',
           lastReportSent: record.last_report_sent
@@ -174,7 +174,7 @@ export default function ReportMailInterface({ isOpen, onClose, defaultPeriod }: 
       });
       
       // Kombiner data
-      const driversWithStatus: DriverWithMailStatus[] = driverData.map(driver => {
+      const driversWithStatus: DriverWithMailStatus[] = driverData.map((driver: any) => {
         const emailInfo = emailMap.get(driver.driver_name) || { email: '', lastReportSent: null };
         const hasEmail = Boolean(emailInfo.email && emailInfo.email.trim());
         const isValidEmail = hasEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInfo.email);
