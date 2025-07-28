@@ -1,26 +1,23 @@
 /**
  * Mail Service Library
  * Baseret på Python-applikationens mail_system.py og mail_handler.py
- * Håndterer SMTP mail sending med nodemailer og email templates
+ * Håndterer Mailjet mail sending med HTTP API og email templates
  */
 
-import nodemailer from 'nodemailer';
 import { supabase, supabaseAdmin } from './db';
 import { DriverData, calculateMetrics } from './report-utils';
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
-// Interface for mail konfiguration - identisk med Python struktur
-export interface MailConfig {
-  smtp_server: string;          // f.eks. "smtp.gmail.com"
-  smtp_port: number;           // f.eks. 587 (TLS) eller 465 (SSL)
-  email: string;               // Afsender email
-  password: string;            // App password (IKKE normalt password)
+// Interface for Mailjet konfiguration
+export interface MailjetConfig {
+  api_key_public: string;      // Mailjet public API key
+  api_key_private: string;     // Mailjet private API key
+  sender_email: string;        // Afsender email
+  sender_name: string;         // Afsender navn
   test_email?: string;         // Test email adresse
-  created_at?: string;
-  updated_at?: string;
 }
 
-// Interface for mail sending request
+// Interface for mail request
 export interface SendMailRequest {
   to: string;                  // Modtager email
   subject: string;             // Email emne
@@ -66,155 +63,121 @@ export interface MailLogEntry {
 }
 
 /**
- * Mail Service Class - identisk struktur med Python MailSystem
+ * Mail Service Class - kun Mailjet implementation
  */
 export class MailService {
-  private transporter: nodemailer.Transporter | null = null;
-  private config: MailConfig | null = null;
-  private maxRetries: number = 3;
-  private retryDelay: number = 2000; // 2 sekunder
+  private mailjetConfig: MailjetConfig | null = null;
 
   constructor() {
-    console.log(`${LOG_PREFIXES.config} Initialiserer Mail Service...`);
+    console.log(`${LOG_PREFIXES.config} Initialiserer Mail Service (Mailjet only)...`);
   }
 
   /**
-   * Henter mail konfiguration fra miljøvariabler eller database
-   * Prioriterer miljøvariabler over database konfiguration
+   * Henter Mailjet konfiguration fra miljøvariabler
    */
-  private async getMailConfig(): Promise<MailConfig | null> {
-    console.log(`${LOG_PREFIXES.search} Henter mail konfiguration...`);
+  private async getMailjetConfig(): Promise<MailjetConfig | null> {
+    console.log(`${LOG_PREFIXES.search} Tjekker Mailjet konfiguration...`);
     
-    // Først: Tjek om alle nødvendige miljøvariabler er sat
-    const envSmtpServer = process.env.SMTP_SERVER;
-    const envSmtpPort = process.env.SMTP_PORT;
-    const envEmail = process.env.EMAIL;
-    const envPassword = process.env.APP_PASSWORD;
+    const mjApiKeyPublic = process.env.MJ_APIKEY_PUBLIC;
+    const mjApiKeyPrivate = process.env.MJ_APIKEY_PRIVATE;
+    const mjSenderEmail = process.env.MJ_SENDER_EMAIL;
+    const mjSenderName = process.env.MJ_SENDER_NAME;
     const envTestEmail = process.env.TEST_EMAIL;
     
-    if (envSmtpServer && envSmtpPort && envEmail && envPassword) {
-      console.log(`${LOG_PREFIXES.success} Mail konfiguration hentet fra miljøvariabler for: ${envEmail}`);
+    if (mjApiKeyPublic && mjApiKeyPrivate && mjSenderEmail && mjSenderName) {
+      console.log(`${LOG_PREFIXES.success} Mailjet konfiguration fundet for: ${mjSenderEmail}`);
       
-      const envConfig: MailConfig = {
-        smtp_server: envSmtpServer,
-        smtp_port: parseInt(envSmtpPort, 10),
-        email: envEmail,
-        password: envPassword,
-        test_email: envTestEmail || undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+      const mailjetConfig: MailjetConfig = {
+        api_key_public: mjApiKeyPublic,
+        api_key_private: mjApiKeyPrivate,
+        sender_email: mjSenderEmail,
+        sender_name: mjSenderName,
+        test_email: envTestEmail || undefined
       };
       
-      this.config = envConfig;
-      return envConfig;
+      this.mailjetConfig = mailjetConfig;
+      return mailjetConfig;
     }
     
-    console.log(`${LOG_PREFIXES.warning} Miljøvariabler ikke komplet sat - forsøger database...`);
-    
-    // Fallback: Hent fra database hvis miljøvariabler ikke er sat
-    try {
-      const { data, error } = await supabase
-        .from('mail_config')
-        .select('*')
-        .limit(1)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') { // No rows found
-          console.log(`${LOG_PREFIXES.warning} Ingen mail konfiguration fundet i database eller miljøvariabler`);
-          return null;
-        }
-        console.error(`${LOG_PREFIXES.error} Database fejl ved hentning af mail config:`, error);
-        return null;
-      }
-      
-      if (!data) {
-        console.log(`${LOG_PREFIXES.warning} Tom mail konfiguration`);
-        return null;
-      }
-      
-      // Validér kritiske felter
-      if (!data.smtp_server || !data.email || !data.password) {
-        console.error(`${LOG_PREFIXES.error} Manglende kritiske mail konfiguration felter`);
-        return null;
-      }
-      
-      console.log(`${LOG_PREFIXES.success} Mail konfiguration hentet fra database for: ${data.email}`);
-      this.config = data as MailConfig;
-      return this.config;
-      
-    } catch (error) {
-      console.error(`${LOG_PREFIXES.error} Uventet fejl ved hentning af mail config:`, error);
-      return null;
-    }
+    console.log(`${LOG_PREFIXES.warning} Mailjet miljøvariabler ikke komplet sat`);
+    return null;
   }
 
   /**
-   * Opretter SMTP transporter - identisk med Python create_smtp_connection()
+   * Sender mail via Mailjet HTTP API
    */
-  private async createTransporter(): Promise<nodemailer.Transporter | null> {
-    console.log(`${LOG_PREFIXES.connection} Opretter SMTP transporter...`);
+  private async sendMailViaMailjet(request: SendMailRequest): Promise<boolean> {
+    console.log(`${LOG_PREFIXES.connection} Sender mail via Mailjet til ${request.to}...`);
     
-    if (!this.config) {
-      this.config = await this.getMailConfig();
-      if (!this.config) {
-        console.error(`${LOG_PREFIXES.error} Ingen mail konfiguration tilgængelig`);
-        return null;
+    if (!this.mailjetConfig) {
+      this.mailjetConfig = await this.getMailjetConfig();
+      if (!this.mailjetConfig) {
+        console.error(`${LOG_PREFIXES.error} Ingen Mailjet konfiguration tilgængelig`);
+        return false;
       }
     }
     
     try {
-      // Opret nodemailer transporter baseret på port - identisk logik med Python
-      const transportConfig = {
-        host: this.config.smtp_server,
-        port: this.config.smtp_port,
-        secure: this.config.smtp_port === 465, // true for 465 (SSL), false for andre porter
-        auth: {
-          user: this.config.email,
-          pass: this.config.password,
-        },
-        // Timeout og retry indstillinger
-        connectionTimeout: 30000, // 30 sekunder
-        greetingTimeout: 30000,
-        socketTimeout: 30000,
+      // Forbered Mailjet payload
+      const payload = {
+        Messages: [
+          {
+            From: {
+              Email: this.mailjetConfig.sender_email,
+              Name: this.mailjetConfig.sender_name
+            },
+            To: [
+              {
+                Email: request.to
+              }
+            ],
+            Subject: request.subject,
+            HTMLPart: request.htmlBody,
+            Attachments: request.attachments?.map(att => ({
+              ContentType: att.contentType,
+              Filename: att.filename,
+              Base64Content: att.content.toString('base64')
+            })) || []
+          }
+        ]
       };
       
-      // Tilføj STARTTLS for port 587 - identisk med Python logik
-      if (this.config.smtp_port === 587) {
-        (transportConfig as any).requireTLS = true;
+      // Send HTTP request til Mailjet
+      const response = await fetch('https://api.mailjet.com/v3.1/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${Buffer.from(
+            `${this.mailjetConfig.api_key_public}:${this.mailjetConfig.api_key_private}`
+          ).toString('base64')}`
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Mailjet API fejl: ${response.status} - ${errorData}`);
       }
       
-      console.log(`${LOG_PREFIXES.connection} Opretter SMTP forbindelse til ${this.config.smtp_server}:${this.config.smtp_port}`);
+      const result = await response.json();
+      const messageResult = result.Messages?.[0];
       
-      const transporter = nodemailer.createTransport(transportConfig);
-      
-      // Verificer SMTP forbindelse
-      await transporter.verify();
-      
-      console.log(`${LOG_PREFIXES.success} SMTP transporter oprettet og verificeret succesfuldt`);
-      this.transporter = transporter;
-      return transporter;
+      if (messageResult?.Status === 'success') {
+        console.log(`${LOG_PREFIXES.success} Mail sendt via Mailjet til ${request.to}, Message ID: ${messageResult.To?.[0]?.MessageID}`);
+        return true;
+      } else {
+        console.error(`${LOG_PREFIXES.error} Mailjet besked fejlede:`, messageResult);
+        return false;
+      }
       
     } catch (error) {
-      console.error(`${LOG_PREFIXES.error} SMTP transporter oprettelse fejlede:`, error);
-      
-      // Detaljeret fejlhåndtering - identisk med Python error handling
-      if (error instanceof Error) {
-        if (error.message.includes('Authentication failed')) {
-          console.error(`${LOG_PREFIXES.error} SMTP autentificering fejlede - tjek email og password`);
-        } else if (error.message.includes('connection timeout')) {
-          console.error(`${LOG_PREFIXES.error} SMTP forbindelse timeout - tjek server og port`);
-        } else if (error.message.includes('ENOTFOUND')) {
-          console.error(`${LOG_PREFIXES.error} SMTP server ikke fundet - tjek server adresse`);
-        }
-      }
-      
-      return null;
+      console.error(`${LOG_PREFIXES.error} Mailjet HTTP fejl:`, error);
+      return false;
     }
   }
 
   /**
-   * Logger mail afsendelse i database - identisk med Python _log_mail_sent()
+   * Logger mail afsendelse i database
    */
   private async logMailSent(entry: MailLogEntry): Promise<void> {
     console.log(`${LOG_PREFIXES.form} Logger mail afsendelse for ${entry.driver_id}...`);
@@ -494,109 +457,51 @@ export class MailService {
   }
 
   /**
-   * Sender mail med retry logik - identisk med Python send_mail() struktur
+   * Sender mail med retry logik - prioriterer Mailjet over SMTP
+   */
+  /**
+   * Sender mail via Mailjet HTTP API
    */
   public async sendMail(request: SendMailRequest): Promise<boolean> {
     console.log(`${LOG_PREFIXES.form} Sender mail til ${request.to}...`);
     
-    let attempt = 0;
-    let lastError: Error | null = null;
+    const mailjetConfig = await this.getMailjetConfig();
+    if (!mailjetConfig) {
+      console.error(`${LOG_PREFIXES.error} Ingen Mailjet konfiguration tilgængelig`);
+      return false;
+    }
     
-    while (attempt < this.maxRetries) {
-      try {
-        attempt++;
-        console.log(`${LOG_PREFIXES.info} Mail forsøg ${attempt}/${this.maxRetries} til ${request.to}`);
-        
-        // Opret transporter hvis ikke allerede oprettet
-        if (!this.transporter) {
-          this.transporter = await this.createTransporter();
-          if (!this.transporter) {
-            throw new Error('Kunne ikke oprette SMTP transporter');
-          }
-        }
-        
-        // Forbered mail indhold
-        const mailOptions: nodemailer.SendMailOptions = {
-          from: this.config?.email,
-          to: request.to,
+    console.log(`${LOG_PREFIXES.info} Bruger Mailjet til mail sending...`);
+    
+    const mailjetSuccess = await this.sendMailViaMailjet(request);
+    if (mailjetSuccess) {
+      // Log success i database
+      if (request.driverId) {
+        await this.logMailSent({
+          driver_id: request.driverId,
+          recipient_email: request.to,
           subject: request.subject,
-          html: request.htmlBody,
-        };
-        
-        // Tilføj vedhæftninger hvis tilgængelige
-        if (request.attachments && request.attachments.length > 0) {
-          mailOptions.attachments = request.attachments.map(att => ({
-            filename: att.filename,
-            content: att.content,
-            contentType: att.contentType,
-          }));
-          
-          console.log(`${LOG_PREFIXES.info} Tilføjer ${request.attachments.length} vedhæftninger`);
-        }
-        
-        // Send mail
-        const info = await this.transporter.sendMail(mailOptions);
-        
-        console.log(`${LOG_PREFIXES.success} Mail sendt succesfuldt til ${request.to}, Message ID: ${info.messageId}`);
-        
-        // Log success i database
-        if (request.driverId) {
-          await this.logMailSent({
-            driver_id: request.driverId,
-            recipient_email: request.to,
-            subject: request.subject,
-            status: 'sent',
-            message: `Mail sendt succesfuldt (forsøg ${attempt})`
-          });
-        }
-        
-        return true;
-        
-      } catch (error) {
-        lastError = error as Error;
-        console.error(`${LOG_PREFIXES.error} Mail forsøg ${attempt} fejlede:`, lastError.message);
-        
-        // Log fejl i database
-        if (request.driverId) {
-          await this.logMailSent({
-            driver_id: request.driverId,
-            recipient_email: request.to,
-            subject: request.subject,
-            status: 'failed',
-            message: `Forsøg ${attempt} fejlede: ${lastError.message}`
-          });
-        }
-        
-        // Reset transporter ved visse fejl
-        if (lastError.message.includes('Authentication failed') || 
-            lastError.message.includes('Connection timeout')) {
-          console.log(`${LOG_PREFIXES.warning} Resetter SMTP transporter efter fejl`);
-          this.transporter = null;
-        }
-        
-        // Vent før næste forsøg (exponential backoff)
-        if (attempt < this.maxRetries) {
-          const delay = this.retryDelay * Math.pow(2, attempt - 1);
-          console.log(`${LOG_PREFIXES.info} Venter ${delay}ms før næste forsøg...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
+          status: 'sent',
+          message: 'Mail sendt succesfuldt via Mailjet'
+        });
       }
+      return true;
+    } else {
+      console.error(`${LOG_PREFIXES.error} Mailjet sending fejlede for ${request.to}`);
+      
+      // Log fejl i database
+      if (request.driverId) {
+        await this.logMailSent({
+          driver_id: request.driverId,
+          recipient_email: request.to,
+          subject: request.subject,
+          status: 'failed',
+          message: 'Mailjet sending fejlede'
+        });
+      }
+      
+      return false;
     }
-    
-    console.error(`${LOG_PREFIXES.error} Mail sending opggivet efter ${this.maxRetries} forsøg til ${request.to}`);
-    
-    // Log endelig fejl
-    if (request.driverId) {
-      await this.logMailSent({
-        driver_id: request.driverId,
-        recipient_email: request.to,
-        subject: request.subject,
-        status: 'failed',
-        message: `Opggivet efter ${this.maxRetries} forsøg: ${lastError?.message}`
-      });
-    }
-    
-    return false;
   }
 
   /**
@@ -676,14 +581,20 @@ export class MailService {
   }
 
   /**
-   * Tester mail konfiguration ved at sende test mail
+   * Tester mail konfiguration ved at sende test mail via Mailjet
    */
   public async sendTestMail(): Promise<boolean> {
-    console.log(`${LOG_PREFIXES.test} Sender test mail...`);
+    console.log(`${LOG_PREFIXES.test} Sender test mail via Mailjet...`);
     
     try {
-      const config = await this.getMailConfig();
-      if (!config || !config.test_email) {
+      const mailjetConfig = await this.getMailjetConfig();
+      if (!mailjetConfig) {
+        console.error(`${LOG_PREFIXES.error} Ingen Mailjet konfiguration tilgængelig`);
+        return false;
+      }
+      
+      const testEmail = mailjetConfig.test_email;
+      if (!testEmail) {
         console.error(`${LOG_PREFIXES.error} Ingen test email konfigureret`);
         return false;
       }
@@ -691,23 +602,61 @@ export class MailService {
       const htmlBody = `
         <h2>Fiskelogistik Mail Test</h2>
         <p>Dette er en test mail fra FSK Online platformen.</p>
+        <p>Mail provider: <strong>Mailjet</strong></p>
         <p>Mail systemet fungerer korrekt!</p>
         <p>Sendt: ${new Date().toLocaleString('da-DK')}</p>
       `;
       
       const success = await this.sendMail({
-        to: config.test_email || 'fallback@example.com',
+        to: testEmail,
         subject: 'FSK Online - Mail Test',
         htmlBody
       });
       
-      console.log(`${LOG_PREFIXES.success} Test mail ${success ? 'sendt' : 'fejlede'}`);
+      console.log(`${LOG_PREFIXES.success} Test mail ${success ? 'sendt' : 'fejlede'} via Mailjet`);
       return success;
       
     } catch (error) {
       console.error(`${LOG_PREFIXES.error} Test mail fejl:`, error);
       return false;
     }
+  }
+
+  /**
+   * Returnerer hvilken mail provider der er konfigureret
+   */
+  public async getMailProvider(): Promise<'mailjet' | 'none'> {
+    const mailjetConfig = await this.getMailjetConfig();
+    if (mailjetConfig) {
+      return 'mailjet';
+    }
+    
+    return 'none';
+  }
+
+  /**
+   * Returnerer mail konfiguration status
+   */
+  public async getConfigStatus(): Promise<{
+    provider: 'mailjet' | 'none';
+    senderEmail?: string;
+    testEmail?: string;
+    configured: boolean;
+  }> {
+    const mailjetConfig = await this.getMailjetConfig();
+    if (mailjetConfig) {
+      return {
+        provider: 'mailjet',
+        senderEmail: mailjetConfig.sender_email,
+        testEmail: mailjetConfig.test_email,
+        configured: true
+      };
+    }
+    
+    return {
+      provider: 'none',
+      configured: false
+    };
   }
 }
 

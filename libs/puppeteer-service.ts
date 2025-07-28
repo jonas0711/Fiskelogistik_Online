@@ -3,6 +3,7 @@
 // Importerer nødvendige moduler til HTTP requests og logging
 import axios from 'axios';
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
+import { BrowserlessRateLimit } from './rate-limit-tracker';
 
 /**
  * PuppeteerService
@@ -11,13 +12,23 @@ import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
  */
 export class PuppeteerService {
   /**
-   * Genererer PDF ud fra HTML via Browserless.io API
+   * Genererer PDF ud fra HTML via Browserless.io API med intelligent rate limit håndtering
    * @param html HTML-indhold der skal konverteres til PDF
    * @returns Buffer med PDF-data
    */
   static async generatePDF(html: string): Promise<Buffer> {
+    // Tjek rate limit status før request
+    const canMakeRequest = BrowserlessRateLimit.canMakeRequest(1);
+    const status = BrowserlessRateLimit.getStatus();
+    
+    if (!canMakeRequest) {
+      console.error(`${LOG_PREFIXES.error} [PuppeteerService] Rate limit nået - ${status.unitsUsed}/${status.maxUnits} units brugt`);
+      const daysLeft = BrowserlessRateLimit.getDaysUntilReset();
+      throw new Error(`Browserless månedlige limit nået (${status.unitsUsed}/${status.maxUnits} units). Nulstilles om ${daysLeft} dage.`);
+    }
+
     // Logger start på PDF-generering via service
-    console.log(`${LOG_PREFIXES.form} [PuppeteerService] Starter ekstern PDF-generering via Browserless.io...`);
+    console.log(`${LOG_PREFIXES.form} [PuppeteerService] Starter ekstern PDF-generering via Browserless.io (${status.remainingUnits} units tilbage)...`);
 
     // Læs API-token og endpoint fra miljøvariabler
     const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
@@ -53,35 +64,51 @@ export class PuppeteerService {
       options: pdfOptions,
     };
 
-    // Retry-logik: 2 forsøg med exponential backoff (1s, 2s)
-    let lastError: any = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        console.log(`${LOG_PREFIXES.form} [PuppeteerService] Forsøg ${attempt}: Sender request til Browserless.io...`);
-        const response = await axios.post(endpoint, payload, {
-          responseType: 'arraybuffer', // For at få PDF som buffer
-          timeout: 30000, // 30 sek timeout
-        });
-        console.log(`${LOG_PREFIXES.success} [PuppeteerService] PDF genereret via Browserless.io (${response.data.length} bytes)`);
-        return Buffer.from(response.data);
-      } catch (error: any) {
-        lastError = error;
-        // Logger fejl med detaljer
-        if (error.response) {
-          console.error(`${LOG_PREFIXES.error} [PuppeteerService] Fejl fra service (status ${error.response.status}):`, error.response.data);
+    try {
+      console.log(`${LOG_PREFIXES.form} [PuppeteerService] Sender request til Browserless.io...`);
+      const response = await axios.post(endpoint, payload, {
+        responseType: 'arraybuffer', // For at få PDF som buffer
+        timeout: 45000, // Øget timeout til 45 sek for stabilitet
+      });
+      
+      // Registrer succesfuld usage
+      BrowserlessRateLimit.recordUsage(1);
+      
+      console.log(`${LOG_PREFIXES.success} [PuppeteerService] PDF genereret via Browserless.io (${response.data.length} bytes)`);
+      return Buffer.from(response.data);
+    } catch (error: any) {
+      // Logger fejl med detaljer
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        if (status === 429) {
+          // Registrer rate limit hit
+          BrowserlessRateLimit.recordRateLimitHit();
+          console.error(`${LOG_PREFIXES.error} [PuppeteerService] Rate limit nået (429) - Browserless units opbrugt`);
+          throw new Error('Browserless rate limit nået - vent til næste måned eller opgrader plan');
         } else {
-          console.error(`${LOG_PREFIXES.error} [PuppeteerService] Netværksfejl eller timeout:`, error.message);
+          console.error(`${LOG_PREFIXES.error} [PuppeteerService] Fejl fra service (status ${status}):`, data);
+          throw new Error(`Browserless API fejl: ${status} - ${data}`);
         }
-        // Exponential backoff
-        if (attempt < 3) {
-          const delay = 1000 * attempt;
-          console.log(`${LOG_PREFIXES.info} [PuppeteerService] Venter ${delay}ms før nyt forsøg...`);
-          await new Promise(res => setTimeout(res, delay));
-        }
+      } else {
+        console.error(`${LOG_PREFIXES.error} [PuppeteerService] Netværksfejl eller timeout:`, error.message);
+        throw new Error(`Browserless netværksfejl: ${error.message}`);
       }
     }
-    // Hvis alle forsøg fejler, kast fejl videre
-    console.error(`${LOG_PREFIXES.error} [PuppeteerService] Alle forsøg på ekstern PDF-generering fejlede.`);
-    throw new Error(`Ekstern PDF-generering fejlede: ${lastError?.message || 'Ukendt fejl'}`);
+  }
+
+  /**
+   * Henter rate limit status for eksterne kald
+   */
+  static getRateLimitStatus() {
+    return BrowserlessRateLimit.getStatus();
+  }
+
+  /**
+   * Henter anbefalet delay mellem requests
+   */
+  static getRecommendedDelay(): number {
+    return BrowserlessRateLimit.getRecommendedDelay();
   }
 } 

@@ -1,10 +1,10 @@
 /**
  * Test Script: Mail System Verification
- * Tester SMTP konfiguration og mail sending funktionalitet
- * Baseret på vores sikkerhedsrettelser
+ * Tester Mailjet konfiguration og mail sending funktionalitet
+ * Kun Mailjet implementation efter SMTP migration
  */
 
-const nodemailer = require('nodemailer');
+const https = require('https');
 require('dotenv').config({ path: '.env.local' });
 
 // Farver til console output
@@ -21,162 +21,196 @@ function log(message, color = 'reset') {
   console.log(`${colors[color]}${message}${colors.reset}`);
 }
 
-async function testMailSystem() {
-  log('🚀 Starter Mail System Test...', 'blue');
+async function checkMailjetConfig() {
+  log('\n🚀 Test 1: Mailjet Konfiguration', 'yellow');
   
-  // Test 1: Tjek miljøvariabler
-  log('\n📋 Test 1: Miljøvariabler', 'yellow');
-  const requiredVars = [
-    'SMTP_SERVER',
-    'SMTP_PORT', 
-    'EMAIL',
-    'APP_PASSWORD',
+  const mailjetVars = [
+    'MJ_APIKEY_PUBLIC',
+    'MJ_APIKEY_PRIVATE',
+    'MJ_SENDER_EMAIL',
+    'MJ_SENDER_NAME',
     'TEST_EMAIL'
   ];
   
-  let missingVars = [];
-  requiredVars.forEach(varName => {
+  let missingMailjetVars = [];
+  let mailjetConfig = {};
+  
+  mailjetVars.forEach(varName => {
     const value = process.env[varName];
     if (!value) {
-      missingVars.push(varName);
+      missingMailjetVars.push(varName);
       log(`❌ Mangler: ${varName}`, 'red');
     } else {
-      log(`✅ ${varName} = ${varName.includes('PASSWORD') ? '••••••••' : value}`, 'green');
+      log(`✅ ${varName} = ${varName.includes('APIKEY') ? '••••••••' : value}`, 'green');
+      mailjetConfig[varName] = value;
     }
   });
   
-  if (missingVars.length > 0) {
-    log(`\n❌ ${missingVars.length} miljøvariabler mangler!`, 'red');
+  if (missingMailjetVars.length === 0) {
+    log('✅ Mailjet konfiguration komplet!', 'green');
+    return mailjetConfig;
+  } else {
+    log(`❌ ${missingMailjetVars.length} Mailjet miljøvariabler mangler`, 'red');
     log('Du skal sætte disse i .env.local filen:', 'yellow');
-    missingVars.forEach(varName => {
+    missingMailjetVars.forEach(varName => {
       log(`   ${varName}=din_værdi_her`, 'yellow');
     });
-    return;
+    return null;
   }
-  
-  // Test 2: Opret SMTP transporter
-  log('\n🔧 Test 2: SMTP Transporter', 'yellow');
-  
-  const transportConfig = {
-    host: process.env.SMTP_SERVER,
-    port: parseInt(process.env.SMTP_PORT, 10),
-    secure: process.env.SMTP_PORT === '465', // true for 465 (SSL), false for andre porter
-    auth: {
-      user: process.env.EMAIL,
-      pass: process.env.APP_PASSWORD,
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
-  };
-  
-  if (process.env.SMTP_PORT === '587') {
-    transportConfig.requireTLS = true;
-  }
-  
-  log(`📡 Opretter forbindelse til ${process.env.SMTP_SERVER}:${process.env.SMTP_PORT}...`, 'blue');
-  
-  try {
-    const transporter = nodemailer.createTransport(transportConfig);
-    
-    // Verificer SMTP forbindelse
-    log('🔍 Verificerer SMTP forbindelse...', 'blue');
-    await transporter.verify();
-    log('✅ SMTP forbindelse verificeret!', 'green');
-    
-    // Test 3: Send test mail
-    log('\n📧 Test 3: Send Test Mail', 'yellow');
-    
-    const testMailOptions = {
-      from: process.env.EMAIL,
-      to: process.env.TEST_EMAIL,
-      subject: '🧪 Fiskelogistik Mail System Test',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #0268AB;">Fiskelogistik Mail System Test</h2>
-          <p>Dette er en test mail for at verificere at mail systemet fungerer korrekt.</p>
-          <div style="background: #E6F4FA; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #024A7D; margin-top: 0;">Test Detaljer:</h3>
-            <ul>
-              <li><strong>SMTP Server:</strong> ${process.env.SMTP_SERVER}</li>
-              <li><strong>SMTP Port:</strong> ${process.env.SMTP_PORT}</li>
-              <li><strong>Afsender:</strong> ${process.env.EMAIL}</li>
-              <li><strong>Modtager:</strong> ${process.env.TEST_EMAIL}</li>
-              <li><strong>Tidspunkt:</strong> ${new Date().toLocaleString('da-DK')}</li>
-            </ul>
-          </div>
-          <p style="color: #4C5E6A; font-size: 14px;">
-            Hvis du modtager denne mail, betyder det at mail systemet er korrekt konfigureret.
-          </p>
-        </div>
-      `,
-      text: `
-Fiskelogistik Mail System Test
-
-Dette er en test mail for at verificere at mail systemet fungerer korrekt.
-
-Test Detaljer:
-- SMTP Server: ${process.env.SMTP_SERVER}
-- SMTP Port: ${process.env.SMTP_PORT}
-- Afsender: ${process.env.EMAIL}
-- Modtager: ${process.env.TEST_EMAIL}
-- Tidspunkt: ${new Date().toLocaleString('da-DK')}
-
-Hvis du modtager denne mail, betyder det at mail systemet er korrekt konfigureret.
-      `
-    };
-    
-    log(`📤 Sender test mail til ${process.env.TEST_EMAIL}...`, 'blue');
-    const info = await transporter.sendMail(testMailOptions);
-    
-    log('✅ Test mail sendt succesfuldt!', 'green');
-    log(`📨 Message ID: ${info.messageId}`, 'blue');
-    log(`📧 Til: ${info.accepted.join(', ')}`, 'blue');
-    
-    if (info.rejected && info.rejected.length > 0) {
-      log(`❌ Afvist: ${info.rejected.join(', ')}`, 'red');
-    }
-    
-  } catch (error) {
-    log(`❌ SMTP fejl: ${error.message}`, 'red');
-    
-    // Detaljeret fejlhåndtering
-    if (error.message.includes('Authentication failed')) {
-      log('\n🔐 Autentificering fejlede!', 'red');
-      log('Mulige årsager:', 'yellow');
-      log('1. Forkert email adresse', 'yellow');
-      log('2. Forkert app password (ikke normalt password)', 'yellow');
-      log('3. 2-faktor autentificering ikke aktiveret', 'yellow');
-      log('4. "Mindre sikre apps" ikke aktiveret (hvis relevant)', 'yellow');
-    } else if (error.message.includes('connection timeout')) {
-      log('\n⏰ Forbindelse timeout!', 'red');
-      log('Mulige årsager:', 'yellow');
-      log('1. Forkert SMTP server adresse', 'yellow');
-      log('2. Forkert SMTP port', 'yellow');
-      log('3. Firewall blokerer forbindelsen', 'yellow');
-    } else if (error.message.includes('ENOTFOUND')) {
-      log('\n🌐 Server ikke fundet!', 'red');
-      log('Mulige årsager:', 'yellow');
-      log('1. Forkert SMTP server adresse', 'yellow');
-      log('2. Internet forbindelse problemer', 'yellow');
-    }
-    
-    return;
-  }
-  
-  // Test 4: Tjek mail logs (hvis database er tilgængelig)
-  log('\n📊 Test 4: Mail Logs', 'yellow');
-  log('ℹ️  Mail logs gemmes i databasen når mails sendes via applikationen', 'blue');
-  
-  log('\n✅ Mail System Test Færdig!', 'green');
-  log('\n📝 Næste skridt:', 'blue');
-  log('1. Tjek din email (også spam mappen)', 'yellow');
-  log('2. Hvis du ikke modtager mailen, tjek ovenstående fejlhåndtering', 'yellow');
-  log('3. Verificer at TEST_EMAIL er korrekt sat', 'yellow');
 }
 
-// Kør test
-testMailSystem().catch(error => {
-  log(`❌ Uventet fejl: ${error.message}`, 'red');
-  process.exit(1);
-}); 
+async function testMailjetSending(config) {
+  log('\n🚀 Test 2: Mailjet Mail Sending', 'yellow');
+  
+  const payload = {
+    Messages: [
+      {
+        From: {
+          Email: config.MJ_SENDER_EMAIL,
+          Name: config.MJ_SENDER_NAME
+        },
+        To: [
+          {
+            Email: config.TEST_EMAIL
+          }
+        ],
+        Subject: '📧 Fiskelogistik Mailjet Test',
+        HTMLPart: `
+          <h2 style="color: #0268AB;">Fiskelogistik Mailjet Test</h2>
+          <p>Dette er en test mail for at verificere at Mailjet systemet fungerer korrekt.</p>
+          
+          <h3>Test Information:</h3>
+          <ul>
+            <li><strong>Mail Provider:</strong> Mailjet</li>
+            <li><strong>Sender Email:</strong> ${config.MJ_SENDER_EMAIL}</li>
+            <li><strong>Sender Name:</strong> ${config.MJ_SENDER_NAME}</li>
+            <li><strong>Test Email:</strong> ${config.TEST_EMAIL}</li>
+            <li><strong>Timestamp:</strong> ${new Date().toLocaleString('da-DK')}</li>
+          </ul>
+          
+          <p style="color: #1F7D3A; font-weight: bold;">
+            ✅ Hvis du modtager denne mail, betyder det at Mailjet systemet er korrekt konfigureret!
+          </p>
+          
+          <hr>
+          <p style="font-size: 12px; color: #666;">
+            Dette er en automatisk test mail fra FSK Online platformen.
+          </p>
+        `,
+        TextPart: `
+          Fiskelogistik Mailjet Test
+          
+          Dette er en test mail for at verificere at Mailjet systemet fungerer korrekt.
+          
+          Test Information:
+          - Mail Provider: Mailjet
+          - Sender Email: ${config.MJ_SENDER_EMAIL}
+          - Sender Name: ${config.MJ_SENDER_NAME}
+          - Test Email: ${config.TEST_EMAIL}
+          - Timestamp: ${new Date().toLocaleString('da-DK')}
+          
+          ✅ Hvis du modtager denne mail, betyder det at Mailjet systemet er korrekt konfigureret!
+          
+          ---
+          Dette er en automatisk test mail fra FSK Online platformen.
+        `
+      }
+    ]
+  };
+  
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify(payload);
+    
+    const options = {
+      hostname: 'api.mailjet.com',
+      port: 443,
+      path: '/v3.1/send',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(
+          `${config.MJ_APIKEY_PUBLIC}:${config.MJ_APIKEY_PRIVATE}`
+        ).toString('base64')}`,
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+    
+    log(`📤 Sender Mailjet test mail til ${config.TEST_EMAIL}...`, 'blue');
+    
+    const req = https.request(options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          const result = JSON.parse(data);
+          const messageResult = result.Messages?.[0];
+          
+          if (messageResult?.Status === 'success') {
+            log('✅ Mailjet test mail sendt succesfuldt!', 'green');
+            log(`📧 Message ID: ${messageResult.To?.[0]?.MessageID}`, 'green');
+            resolve(true);
+          } else {
+            log(`❌ Mailjet besked fejlede: ${JSON.stringify(messageResult)}`, 'red');
+            reject(new Error('Mailjet besked fejlede'));
+          }
+        } else {
+          log(`❌ HTTP fejl: ${res.statusCode} - ${data}`, 'red');
+          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      log(`❌ Mailjet fejl: ${error.message}`, 'red');
+      reject(error);
+    });
+    
+    req.write(postData);
+    req.end();
+  });
+}
+
+async function testMailSystem() {
+  log('🚀 Starter Fiskelogistik Mail System Test', 'bold');
+  log('📍 Tester Mailjet konfiguration og mail sending', 'blue');
+  
+  try {
+    // Test 1: Mailjet konfiguration
+    const mailjetConfig = await checkMailjetConfig();
+    if (!mailjetConfig) {
+      log('\n❌ Mailjet konfiguration mangler!', 'red');
+      log('Du skal sætte alle påkrævede Mailjet miljøvariabler i .env.local', 'yellow');
+      return;
+    }
+    
+    // Test 2: Mailjet mail sending
+    await testMailjetSending(mailjetConfig);
+    
+    log('\n✅ Mailjet Test Færdig!', 'green');
+    log('🎉 Mailjet systemet fungerer korrekt!', 'green');
+    
+  } catch (error) {
+    log(`\n❌ Mailjet test fejlede: ${error.message}`, 'red');
+    log('\n🔧 Fejlfinding:', 'yellow');
+    log('1. Tjek at alle Mailjet miljøvariabler er sat korrekt', 'yellow');
+    log('2. Verificer at MJ_APIKEY_PUBLIC og MJ_APIKEY_PRIVATE er korrekte', 'yellow');
+    log('3. Tjek at MJ_SENDER_EMAIL er en verificeret sender i Mailjet', 'yellow');
+    log('4. Verificer at TEST_EMAIL er en gyldig email adresse', 'yellow');
+    log('5. Tjek Mailjet dashboard for eventuelle fejl', 'yellow');
+  }
+}
+
+// Kør test hvis scriptet køres direkte
+if (require.main === module) {
+  testMailSystem().catch(console.error);
+}
+
+module.exports = {
+  checkMailjetConfig,
+  testMailjetSending,
+  testMailSystem
+}; 

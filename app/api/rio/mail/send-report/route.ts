@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/libs/db';
 import { getMailService, ReportEmailData } from '@/libs/mail-service';
 import { PDFReportGenerator } from '@/libs/pdf-report-generator';
+import { PDFCacheService } from '@/libs/pdf-cache';
+import { PuppeteerService } from '@/libs/puppeteer-service';
 import { 
   DriverData, 
   calculateMetrics, 
@@ -320,29 +322,52 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
           }
         };
         try {
+          // Først tjek om PDF er cached
           const previousDriverData = previousDriversData.find(pd => pd.driver_name === driver.driver_name);
-          console.log(`${LOG_PREFIXES.info} PDF generering for ${driver.driver_name}:`, {
-            hasPreviousData: !!previousDriverData,
-            previousMonth: previousDriverData?.month,
-            previousYear: previousDriverData?.year,
-            currentMonth: driver.month,
-            currentYear: driver.year
+          
+          // Generer data hash for cache validation
+          const dataHash = JSON.stringify({
+            driverData: driver,
+            previousData: previousDriverData,
+            totalDrivers: qualifiedDrivers.length
           });
-          const pdfGenerator = new PDFReportGenerator({
-            reportType: 'individuel',
-            month,
-            year,
-            selectedDriver: driver.driver_name,
-            period: periodText,
-            totalDrivers: qualifiedDrivers.length,
-            drivers: qualifiedDrivers,
-            previousDrivers: previousDriversData,
-            overallRanking,
-            generatedAt: new Date().toISOString()
-          });
-          const pdfBuffer = await pdfGenerator.generateReport();
-          reportData.rapport = pdfBuffer;
-          console.log(`${LOG_PREFIXES.success} PDF genereret for ${driver.driver_name}: ${pdfBuffer.length} bytes`);
+          
+          console.log(`${LOG_PREFIXES.search} Tjekker PDF cache for ${driver.driver_name}...`);
+          let pdfBuffer = PDFCacheService.getCachedPDF(driver.driver_name, month, year, dataHash);
+          
+          if (pdfBuffer) {
+            console.log(`${LOG_PREFIXES.found} Bruger cached PDF for ${driver.driver_name}: ${pdfBuffer.length} bytes`);
+            reportData.rapport = pdfBuffer;
+          } else {
+            console.log(`${LOG_PREFIXES.info} Genererer ny PDF for ${driver.driver_name}:`, {
+              hasPreviousData: !!previousDriverData,
+              previousMonth: previousDriverData?.month,
+              previousYear: previousDriverData?.year,
+              currentMonth: driver.month,
+              currentYear: driver.year
+            });
+            
+            const pdfGenerator = new PDFReportGenerator({
+              reportType: 'individuel',
+              month,
+              year,
+              selectedDriver: driver.driver_name,
+              period: periodText,
+              totalDrivers: qualifiedDrivers.length,
+              drivers: qualifiedDrivers,
+              previousDrivers: previousDriversData,
+              overallRanking,
+              generatedAt: new Date().toISOString()
+            });
+            
+            pdfBuffer = await pdfGenerator.generateReport();
+            reportData.rapport = pdfBuffer;
+            
+            // Cache den genererede PDF
+            PDFCacheService.cachePDF(driver.driver_name, month, year, pdfBuffer, dataHash);
+            
+            console.log(`${LOG_PREFIXES.success} PDF genereret og cached for ${driver.driver_name}: ${pdfBuffer.length} bytes`);
+          }
         } catch (pdfError) {
           console.error(`${LOG_PREFIXES.error} PDF generering fejlede for ${driver.driver_name}:`, pdfError);
         }
@@ -383,26 +408,102 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
       }
     }
 
+    // Hent initial rate limit status og planlæg optimalt flow
+    const initialRateStatus = PuppeteerService.getRateLimitStatus();
+    console.log(`${LOG_PREFIXES.info} Browserless rate limit status:`, {
+      unitsUsed: initialRateStatus.unitsUsed,
+      maxUnits: initialRateStatus.maxUnits,
+      remainingUnits: initialRateStatus.remainingUnits,
+      canMakeRequest: initialRateStatus.canMakeRequest
+    });
+
+    // Tjek om vi har nok units til alle requests
+    if (!initialRateStatus.canMakeRequest) {
+      return NextResponse.json({
+        success: false,
+        message: `Browserless månedlige limit nået (${initialRateStatus.unitsUsed}/${initialRateStatus.maxUnits} units). Prøv igen næste måned.`,
+        error: 'RATE_LIMIT_EXCEEDED'
+      }, { status: 429 });
+    }
+
+    if (initialRateStatus.remainingUnits < driversToSendMails.length) {
+      console.log(`${LOG_PREFIXES.warning} Kun ${initialRateStatus.remainingUnits} units tilbage, men ${driversToSendMails.length} chauffører skal behandles`);
+      
+      return NextResponse.json({
+        success: false,
+        message: `Ikke nok Browserless units tilbage (${initialRateStatus.remainingUnits} units, ${driversToSendMails.length} nødvendige). Prøv færre chauffører eller vent til næste måned.`,
+        error: 'INSUFFICIENT_UNITS',
+        details: {
+          remainingUnits: initialRateStatus.remainingUnits,
+          requiredUnits: driversToSendMails.length
+        }
+      }, { status: 429 });
+    }
+
     if (mode === 'bulk') {
-      // Chunking: del chauffører op i chunks af 5
-      const chunks = splitIntoChunks(driversToSendMails, 5);
+      // Conservative chunking: kun 1 PDF ad gangen for at respektere gratis plan
+      const chunkSize = Math.min(1, Math.floor(initialRateStatus.remainingUnits / 10)); // Endnu mere konservativ
+      const chunks = splitIntoChunks(driversToSendMails, Math.max(1, chunkSize));
+      
+      console.log(`${LOG_PREFIXES.info} Bruger konservativ chunk størrelse: ${Math.max(1, chunkSize)} (${chunks.length} chunks total)`);
+      
       for (let i = 0; i < chunks.length; i++) {
         console.log(`${LOG_PREFIXES.info} Starter chunk ${i + 1}/${chunks.length} (chauffører: ${chunks[i].map(d => d.driver_name).join(', ')})`);
-        await Promise.all(chunks[i].map(driver => sendMailForDriver(driver)));
+        
+        // Sekventiel behandling med intelligente delays
+        for (const driver of chunks[i]) {
+          await sendMailForDriver(driver);
+          
+          // Intelligent delay baseret på rate limit status
+          if (chunks[i].indexOf(driver) < chunks[i].length - 1) {
+            const recommendedDelay = PuppeteerService.getRecommendedDelay();
+            console.log(`${LOG_PREFIXES.info} Venter ${recommendedDelay/1000}s mellem PDF generationer...`);
+            await sleep(recommendedDelay);
+          }
+        }
+        
         console.log(`${LOG_PREFIXES.success} Chunk ${i + 1}/${chunks.length} færdig.`);
+        
+        // Større delay mellem chunks
         if (i < chunks.length - 1) {
-          console.log(`${LOG_PREFIXES.info} Venter 2 sekunder før næste chunk...`);
-          await sleep(2000);
+          const delayBetweenChunks = Math.max(5000, PuppeteerService.getRecommendedDelay() * 2);
+          console.log(`${LOG_PREFIXES.info} Venter ${delayBetweenChunks/1000}s før næste chunk...`);
+          await sleep(delayBetweenChunks);
         }
       }
     } else {
-      // Individual: sekventiel for-loop
-      for (const driver of driversToSendMails) {
+      // Individual: sekventiel med intelligent delay
+      for (let i = 0; i < driversToSendMails.length; i++) {
+        const driver = driversToSendMails[i];
         await sendMailForDriver(driver);
+        
+        // Intelligent delay mellem individuelle sends
+        if (i < driversToSendMails.length - 1) {
+          const recommendedDelay = PuppeteerService.getRecommendedDelay();
+          console.log(`${LOG_PREFIXES.info} Venter ${recommendedDelay/1000}s før næste mail...`);
+          await sleep(recommendedDelay);
+        }
       }
     }
 
     console.log(`${LOG_PREFIXES.success} Mail sending afsluttet - Sent: ${results.sent}, Fejlede: ${results.failed}`);
+    
+    // Log cache statistikker
+    const cacheStats = PDFCacheService.getCacheStats();
+    console.log(`${LOG_PREFIXES.info} PDF Cache statistikker:`, {
+      totalEntries: cacheStats.totalEntries,
+      totalSizeMB: (cacheStats.totalSizeBytes / 1024 / 1024).toFixed(2),
+      oldestEntry: cacheStats.oldestEntry,
+      newestEntry: cacheStats.newestEntry
+    });
+
+    // Log final rate limit status
+    const finalRateStatus = PuppeteerService.getRateLimitStatus();
+    console.log(`${LOG_PREFIXES.info} Final Browserless status:`, {
+      unitsUsed: finalRateStatus.unitsUsed,
+      remainingUnits: finalRateStatus.remainingUnits,
+      usagePercent: ((finalRateStatus.unitsUsed / finalRateStatus.maxUnits) * 100).toFixed(1) + '%'
+    });
     
     const successMessage = mode === 'individual' 
       ? `Rapport sendt til ${results.sent} chauffør${results.sent !== 1 ? 'er' : ''}`
@@ -411,7 +512,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
     return NextResponse.json({
       success: true,
       message: successMessage,
-      results
+      results,
+      cacheStats: {
+        totalCachedPDFs: cacheStats.totalEntries,
+        totalCacheSizeMB: (cacheStats.totalSizeBytes / 1024 / 1024).toFixed(2)
+      },
+      rateLimitStatus: {
+        unitsUsed: finalRateStatus.unitsUsed,
+        maxUnits: finalRateStatus.maxUnits,
+        remainingUnits: finalRateStatus.remainingUnits,
+        usagePercent: ((finalRateStatus.unitsUsed / finalRateStatus.maxUnits) * 100).toFixed(1) + '%'
+      }
     });
     
   } catch (error) {

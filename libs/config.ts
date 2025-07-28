@@ -88,13 +88,13 @@ export function getCookieConfig(request?: Request) {
   };
 }
 
-// Mail konfiguration
-export const SMTP_CONFIG = {
-  server: process.env.SMTP_SERVER!,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  email: process.env.EMAIL!,
+// Mailjet konfiguration
+export const MAILJET_CONFIG = {
+  apiKeyPublic: process.env.MJ_APIKEY_PUBLIC!,
+  apiKeyPrivate: process.env.MJ_APIKEY_PRIVATE!,
+  senderEmail: process.env.MJ_SENDER_EMAIL!,
+  senderName: process.env.MJ_SENDER_NAME!,
   testEmail: process.env.TEST_EMAIL!,
-  appPassword: process.env.APP_PASSWORD!,
 };
 
 // Browserless konfiguration
@@ -127,10 +127,11 @@ export function validateEnvironment(): { isValid: boolean; errors: string[] } {
   if (!SUPABASE_ANON_KEY) errors.push('NEXT_PUBLIC_SUPABASE_ANON_KEY mangler');
   if (!SUPABASE_SERVICE_ROLE_KEY) errors.push('SUPABASE_SERVICE_ROLE_KEY mangler');
   
-  // Mail
-  if (!SMTP_CONFIG.server) errors.push('SMTP_SERVER mangler');
-  if (!SMTP_CONFIG.email) errors.push('EMAIL mangler');
-  if (!SMTP_CONFIG.appPassword) errors.push('APP_PASSWORD mangler');
+  // Mailjet
+  if (!MAILJET_CONFIG.apiKeyPublic) errors.push('MJ_APIKEY_PUBLIC mangler');
+  if (!MAILJET_CONFIG.apiKeyPrivate) errors.push('MJ_APIKEY_PRIVATE mangler');
+  if (!MAILJET_CONFIG.senderEmail) errors.push('MJ_SENDER_EMAIL mangler');
+  if (!MAILJET_CONFIG.senderName) errors.push('MJ_SENDER_NAME mangler');
   
   // Browserless
   if (!BROWSERLESS_CONFIG.token) errors.push('BROWSERLESS_TOKEN mangler');
@@ -163,7 +164,7 @@ export default {
   VERCEL_REGION,
   getAppUrl,
   getCookieConfig,
-  SMTP_CONFIG,
+  MAILJET_CONFIG,
   BROWSERLESS_CONFIG,
   SECURITY_CONFIG,
   DEBUG_CONFIG,
