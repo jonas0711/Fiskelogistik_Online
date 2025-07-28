@@ -27,22 +27,44 @@ export const VERCEL_REGION = process.env.VERCEL_REGION;
 
 // App URL konfiguration med Vercel support
 export function getAppUrl(request?: Request): string {
+  console.log('🔧 getAppUrl() kaldt med request:', !!request);
+  
   // Hvis vi har en request, brug den til at bestemme URL
   if (request) {
     const host = request.headers.get('host');
     const protocol = request.headers.get('x-forwarded-proto') || 'https';
     
+    console.log('📡 Request headers:', {
+      host,
+      protocol,
+      'x-forwarded-proto': request.headers.get('x-forwarded-proto'),
+      'x-vercel-id': request.headers.get('x-vercel-id')
+    });
+    
     if (host) {
-      return `${protocol}://${host}`;
+      const url = `${protocol}://${host}`;
+      console.log('✅ URL bestemt fra request:', url);
+      return url;
     }
   }
   
   // Fallback til environment variabler
   if (IS_VERCEL && VERCEL_URL) {
-    return `https://${VERCEL_URL}`;
+    const url = `https://${VERCEL_URL}`;
+    console.log('✅ URL bestemt fra VERCEL_URL:', url);
+    return url;
   }
   
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  // Fiskelogistikgruppen specifik produktions-URL
+  if (IS_PRODUCTION && !IS_DEVELOPMENT) {
+    const url = 'https://fiskelogistik-online.vercel.app';
+    console.log('✅ URL bestemt fra production fallback:', url);
+    return url;
+  }
+  
+  const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  console.log('✅ URL bestemt fra environment/fallback:', url);
+  return url;
 }
 
 // Cookie konfiguration baseret på environment

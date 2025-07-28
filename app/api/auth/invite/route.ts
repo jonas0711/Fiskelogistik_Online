@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
     
     // Opret redirect URL med invitation data
     const baseUrl = getAppUrl(request);
+    console.log('🌐 Base URL bestemt:', baseUrl);
+    
     const redirectUrl = new URL('/auth/accept-invite', baseUrl);
     redirectUrl.searchParams.set('email', body.email.trim());
     if (body.full_name) {
@@ -101,6 +103,9 @@ export async function POST(request: NextRequest) {
     redirectUrl.searchParams.set('role', body.role || 'user');
     
     console.log('🔗 Redirect URL med invitation data:', redirectUrl.toString());
+    console.log('📧 Invitation sendes til:', body.email.trim());
+    console.log('👤 Bruger rolle:', body.role || 'user');
+    console.log('📝 Fuldt navn:', body.full_name || 'Ikke angivet');
     
     // Send invitation via Supabase Admin API
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
