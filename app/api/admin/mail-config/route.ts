@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, supabaseAdmin } from '@/libs/db';
 import { validateAdminToken } from '@/libs/admin';
-import { MailConfig, getMailService } from '@/libs/mail-service';
+import { getMailService } from '@/libs/mail-service';
 import { LOG_PREFIXES } from '@/components/ui/icons/icon-config';
 
 // Email validering regex
@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
   console.log(`${LOG_PREFIXES.search} Håndterer GET request til mail config API...`);
   
   try {
+    const mailjetConfigured = !!(process.env.MJ_APIKEY_PUBLIC && process.env.MJ_APIKEY_PRIVATE);
+
     // Tjek admin rettigheder
     const authHeader = request.headers.get('authorization');
     const adminUser = await validateAdminToken(authHeader);
@@ -50,6 +52,7 @@ export async function GET(request: NextRequest) {
         success: true,
         configured: true,
         source: 'environment',
+        mailjetConfigured,
         config: {
           smtp_server: envSmtpServer,
           smtp_port: parseInt(envSmtpPort, 10),
@@ -77,13 +80,14 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           success: true,
           configured: false,
+          mailjetConfigured,
           message: 'Ingen mail konfiguration fundet'
         });
       }
       
       console.error(`${LOG_PREFIXES.error} Database fejl ved hentning af mail config:`, configError);
       return NextResponse.json(
-        { error: 'Kunne ikke hente mail konfiguration' },
+        { error: 'Kunne ikke hente mail konfiguration', mailjetConfigured },
         { status: 500 }
       );
     }
@@ -94,6 +98,7 @@ export async function GET(request: NextRequest) {
       success: true,
       configured: true,
       source: 'database',
+      mailjetConfigured,
       config: {
         smtp_server: mailConfig.smtp_server,
         smtp_port: mailConfig.smtp_port,
@@ -136,6 +141,14 @@ export async function POST(request: NextRequest) {
     
     console.log(`${LOG_PREFIXES.admin} Admin bruger verificeret: ${adminUser.email}`);
     
+    const mailjetConfigured = !!(process.env.MJ_APIKEY_PUBLIC && process.env.MJ_APIKEY_PRIVATE);
+    if (mailjetConfigured) {
+      return NextResponse.json(
+        { error: 'Mailjet er konfigureret, SMTP-indstillinger kan ikke ændres.' },
+        { status: 400 }
+      );
+    }
+
     const body = await request.json();
     const { smtp_server, smtp_port, email, password, test_email } = body;
     

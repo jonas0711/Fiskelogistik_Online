@@ -383,23 +383,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
       }
     }
 
-    if (mode === 'bulk') {
-      // Chunking: del chauffører op i chunks af 5
-      const chunks = splitIntoChunks(driversToSendMails, 5);
-      for (let i = 0; i < chunks.length; i++) {
-        console.log(`${LOG_PREFIXES.info} Starter chunk ${i + 1}/${chunks.length} (chauffører: ${chunks[i].map(d => d.driver_name).join(', ')})`);
-        await Promise.all(chunks[i].map(driver => sendMailForDriver(driver)));
-        console.log(`${LOG_PREFIXES.success} Chunk ${i + 1}/${chunks.length} færdig.`);
-        if (i < chunks.length - 1) {
-          console.log(`${LOG_PREFIXES.info} Venter 2 sekunder før næste chunk...`);
-          await sleep(2000);
-        }
-      }
-    } else {
-      // Individual: sekventiel for-loop
-      for (const driver of driversToSendMails) {
-        await sendMailForDriver(driver);
-      }
+    for (const driver of driversToSendMails) {
+      await sendMailForDriver(driver);
     }
 
     console.log(`${LOG_PREFIXES.success} Mail sending afsluttet - Sent: ${results.sent}, Fejlede: ${results.failed}`);
@@ -424,17 +409,4 @@ export async function POST(request: NextRequest): Promise<NextResponse<SendRepor
       { status: 500 }
     );
   }
-} 
-
-// Hjælpefunktion til at splitte array i chunks
-function splitIntoChunks<T>(array: T[], chunkSize: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += chunkSize) {
-    chunks.push(array.slice(i, i + chunkSize));
-  }
-  return chunks;
-}
-// Hjælpefunktion til at vente
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
 } 
